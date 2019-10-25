@@ -1,0 +1,7 @@
+[package]
+name = "11"
+version = "1.0.0"
+
+[[bin]]
+name = "11"
+path = "11.rs"
