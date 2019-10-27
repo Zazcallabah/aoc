@@ -1,0 +1,11 @@
+[package]
+name = "sixteen"
+version = "0.1.0"
+edition = "2018"
+
+[[bin]]
+name = "16"
+path = "16.rs"
+
+[dependencies]
+regex = "1"
