@@ -1,0 +1,12 @@
+[package]
+name = "thirteen"
+version = "0.1.0"
+edition = "2018"
+
+[[bin]]
+name = "13"
+path = "13.rs"
+
+[dependencies]
+regex = "1"
+permutohedron = "0.2.4"
