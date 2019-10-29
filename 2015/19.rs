@@ -36,61 +36,6 @@ fn apply_rule(rule: (&str, &str), source: &str, map: &mut HashMap<String, ()>) {
 	}
 }
 
-fn main() {
-	let rules = r"Al => ThF
-Al => ThRnFAr
-B => BCa
-B => TiB
-B => TiRnFAr
-Ca => CaCa
-Ca => PB
-Ca => PRnFAr
-Ca => SiRnFYFAr
-Ca => SiRnMgAr
-Ca => SiTh
-F => CaF
-F => PMg
-F => SiAl
-H => CRnAlAr
-H => CRnFYFYFAr
-H => CRnFYMgAr
-H => CRnMgYFAr
-H => HCa
-H => NRnFYFAr
-H => NRnMgAr
-H => NTh
-H => OB
-H => ORnFAr
-Mg => BF
-Mg => TiMg
-N => CRnFAr
-N => HSi
-O => CRnFYFAr
-O => CRnMgAr
-O => HP
-O => NRnFAr
-O => OTi
-P => CaP
-P => PTi
-P => SiRnFAr
-Si => CaSi
-Th => ThCa
-Ti => BP
-Ti => TiTi
-e => HF
-e => NAl
-e => OMg";
-
-	let data = "CRnCaSiRnBSiRnFArTiBPTiTiBFArPBCaSiThSiRnTiBPBPMgArCaSiRnTiMgArCaSiThCaSiRnFArRnSiRnFArTiTiBFArCaCaSiRnSiThCaCaSiRnMgArFYSiRnFYCaFArSiThCaSiThPBPTiMgArCaPRnSiAlArPBCaCaSiRnFYSiThCaRnFArArCaCaSiRnPBSiRnFArMgYCaCaCaCaSiThCaCaSiAlArCaCaSiRnPBSiAlArBCaCaCaCaSiThCaPBSiThPBPBCaSiRnFYFArSiThCaSiRnFArBCaCaSiRnFYFArSiThCaPBSiThCaSiRnPMgArRnFArPTiBCaPRnFArCaCaCaCaSiRnCaCaSiRnFYFArFArBCaSiThFArThSiThSiRnTiRnPMgArFArCaSiThCaPBCaSiRnBFArCaCaPRnCaCaPMgArSiRnFYFArCaSiThRnPBPMgAr";
-	let map = run(rules, data);
-	println!("length {}", map.len());
-
-	let input = parse(&rules);
-	let shortest = backwards(&input, &mut String::from(data), 0, 10000000);
-
-	println!("shortest {}", shortest);
-}
-
 fn run(rules: &str, data: &str) -> Vec<String> {
 	let input = parse(&rules);
 	let mut map: HashMap<String, ()> = HashMap::new();
@@ -104,46 +49,56 @@ fn run(rules: &str, data: &str) -> Vec<String> {
 	keys
 }
 
-fn backwards(rules: &Vec<(&str, &str)>, data: &mut String, depth: i32, mut minimum: i32) -> i32 {
-	let newdepth = depth + 1;
-	if depth % 10 == 9 {
-		print!("{} ",depth);
-		if( depth
+pub fn minimize(rules: &str, data: &str) -> i32 {
+	let input = parse(&rules);
+	let (s,count) = minimize_internal(&input,&data);
+	if s == "e" {
+		count
 	}
-	for i in 0..data.len() {
-		if newdepth >= minimum {
-			break;
-		}
-		for (from, to) in rules {
-			if newdepth >= minimum {
-				break;
-			}
-			let endmark = i + to.len();
-			if endmark > data.len() {
-				continue;
-			}
-			let slice = &data[i..endmark];
-			if &slice == to {
-				data.replace_range(i..endmark, from);
-				if data == "e" {
-					if newdepth < minimum {
-						minimum = newdepth;
-						println!("{}", minimum);
-						data.replace_range(i..i + from.len(), to);
-						continue;
-					}
-				}
-				let searchmin = backwards(&rules, data, newdepth, minimum);
-				data.replace_range(i..i + from.len(), to);
-				if searchmin < minimum {
-					println!("{}", minimum);
+	else {
+		-1
+	}
+}
 
-					minimum = searchmin;
+fn minimize_internal(rules: &Vec<(&str, &str)>,data: &str) -> (String,i32) {
+	let mut ops = 0i32;
+	if let Some((x,y)) = find_paren(data) {
+		let (replacewith,opcount) = minimize_internal(rules,&data[x+1..y]);
+		ops += opcount;
+	}
+
+	(String::from("e"),1)
+}
+
+
+// fn minimize_rnar(rules: &Vec<(&str, &str)>) -> (String,i32) {
+// }
+
+fn find_paren(data:&str) -> Option<(usize,usize)> {
+		if let Some(x) = data.find("(") {
+			let mut level = 0;
+			if let Some(y) = data.find(|c:char| {
+				if c == '(' {
+					level += 1;
+					false
+				} else if level == 1 && c == ')' {
+					true
+				} else if c == ')' {
+					level -= 1;
+					false
 				}
-			}
+				else {
+					false
+				}
+		}) {
+			return Some((x,y))
+		}
+		else
+		{
+			panic!("unparsable Rn ... Ar");
 		}
 	}
-	minimum
+	None
 }
 
 #[cfg(test)]
@@ -151,53 +106,34 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_backwards() {
-		let result = backwards(
-			&vec![("a", "ab"), ("e", "a")],
-			&mut String::from("ab"),
-			0,
-			1000000,
-		);
-		assert_eq!(2, result);
+	fn test_rnar() {
+
+		let data = String::from("0123(5(7))");
+		assert_eq!(Some((4,9)),find_paren(&data));
+
 	}
 
-	#[test]
-	fn test_backwards_complex() {
-		let rules = vec![
-			("e", "O"),
-			("e", "H"),
-			("H", "HO"),
-			("H", "OH"),
-			("O", "HH"),
-		];
-		assert_eq!(
-			6,
-			backwards(&rules, &mut String::from("HOHOHO"), 0, 1000000)
-		);
-		assert_eq!(3, backwards(&rules, &mut String::from("HOH"), 0, 1000000));
-	}
+	// #[test]
+	// fn test_part2() {
+	// 	let rules = std::fs::read_to_string("19-rules.txt")
+	// 		.unwrap()
+	// 		.replace("\r\n", "\n")
+	// 		.replace("Rn", "(")
+	// 		.replace("Ar", ")");
+	// 	let data = std::fs::read_to_string("19.txt")
+	// 		.unwrap()
+	// 		.replace("Rn", "(")
+	// 		.replace("Ar", ")");;
+	// 	assert_eq!(509, minimize(&rules, &data));
+	// }
 
-	#[test]
-	fn test_backwards_finds_shortest2() {
-		let rules = vec![("e", "HO"), ("H", "HH"), ("O", "OO")];
-		assert_eq!(3, backwards(&rules, &mut String::from("HHOO"), 0, 1000000));
-	}
-
-	#[test]
-	fn test_backwards_finds_shortest() {
-		let rules = vec![
-			("e", "O"),
-			("e", "H"),
-			("H", "HO"),
-			("H", "OH"),
-			("O", "HH"),
-			("e", "HOHOHO"),
-		];
-		assert_eq!(
-			1,
-			backwards(&rules, &mut String::from("HOHOHO"), 0, 1000000)
-		);
-	}
+	// #[test]
+	// fn test_part1() {
+	// 	let rules = std::fs::read_to_string("19-rules.txt").unwrap();
+	// 	let data = std::fs::read_to_string("19.txt").unwrap();
+	// 	let map = run(&rules.replace("\r\n", "\n"), &data);
+	// 	assert_eq!(509, map.len());
+	// }
 
 	#[test]
 	fn test_withtestinput() {

@@ -1,0 +1,78 @@
+Al => Th F
+Al => Th ( F )
+B => B Ca
+B => Ti B
+B => Ti ( F )
+Ca => Ca Ca
+Ca => P B
+Ca => P ( F )
+Ca => Si ( F , F )
+Ca => Si ( Mg )
+Ca => Si Th
+F => Ca F
+F => P Mg
+F => Si Al
+H => C ( Al )
+H => C ( F , F , F )
+H => C ( F , Mg )
+H => C ( Mg , F )
+H => H Ca
+H => N ( F , F )
+H => N ( Mg )
+H => N Th
+H => O B
+H => O ( F )
+Mg => B F
+Mg => Ti Mg
+N => C ( F )
+N => H Si
+O => C ( F , F )
+O => C ( Mg )
+O => H P
+O => N ( F )
+O => O Ti
+P => Ca P
+P => P Ti
+P => Si ( F )
+Si => Ca Si
+Th => Th Ca
+Ti => B P
+Ti => Ti Ti
+e => H F
+e => N Al
+e => O Mg
+
+C(
+	CaSi(BSi(F) TiBPTiTiBF)
+	PBCaSiThSi(TiBPBPMg)
+	CaSi(TiMg)
+	CaSiThCaSi(F)
+	(Si(F) TiTiBF)
+	CaCaSi(
+		SiThCaCaSi(Mg)F,
+		Si(F,CaF) SiThCaSiThPBPTiMg
+	)
+	CaP(SiAl)
+	PBCaCaSi(
+		F,
+		SiThCa(F)
+	)
+	CaCaSi(
+		PBSi(F)Mg,
+		CaCaCaCaSiThCaCaSiAl
+	)
+	CaCaSi(PBSiAl)
+	BCaCaCaCaSiThCaPBSiThPBPBCaSi(F,F)
+	SiThCaSi(F)
+	BCaCaSi(F,F)
+	SiThCaPBSiThCaSi(PMg)
+	(F)
+	PTiBCaP(F)
+	CaCaCaCaSi( CaCaSi(F,F) F )
+	BCaSiThF
+)
+ThSiThSi(Ti(PMg)F)
+CaSiThCaPBCaSi(BF)
+CaCaP(CaCaPMg)
+Si(F,F)
+CaSiTh(PBPMg)
