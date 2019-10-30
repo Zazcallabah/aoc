@@ -135,22 +135,12 @@ fn run_length_pass(rules: &Vec<Rule>,data: &mut Vec<u8>) -> i32 {
 		}
 		if ix > 0 {
 			ix -= 1;
-		} else {
-			//return opcount + run_length_pass(rules,data)
 		}
 		for rule in rules {
 			if rule_match( &rule, data, ix ) {
 				data.drain(ix+1..ix+rule.1.len());
 				opcount += 1;
-
-				// drain tail of zeroes
-				if data.len() > ix + 1 {
-					if rule_match( &rules[0], data, ix ) {
-						data.drain(ix..=ix);
-						opcount += 1;
-					}
-				}
-
+				ix += 1;
 				break;
 			}
 		}
@@ -202,9 +192,20 @@ mod tests {
 	fn test_rlp_trailing_zero_within_rnar() {
 		let mut v = vec![0, 5, 0, 5, 0, 2, 0, 2, 0, 5, 0, 0, 0, 2, 0];
 		let opcount = run_length_pass(&get_rules(),&mut v);
-		assert_eq!(9, opcount);
+		assert_eq!(8, opcount);
 		assert_eq!(vec![0],v);
 	}
+
+	#[test]
+	fn test_rlp_rnarrnar() {
+		let mut v = vec![0, 5, 0, 5, 0, 0, 2, 5, 0, 2, 0, 2, 0];
+		let opcount = run_length_pass(&get_rules(),&mut v);
+		assert_eq!(6, opcount);
+		assert_eq!(vec![0],v);
+	}
+
+
+
 
 	#[test]
 	fn test_withtestinput() {
