@@ -49,254 +49,161 @@ fn run(rules: &str, data: &str) -> Vec<String> {
 	keys
 }
 
-type Atom = u32;
+fn main() {
+	let rules = std::fs::read_to_string("19-rules.txt").unwrap();
+	let data = std::fs::read_to_string("19.txt").unwrap();
+	let map = run(&rules.replace("\r\n", "\n"), &data);
+	println!("unique combinations: {}",map.len());
 
-fn hash(s: &str ) -> Atom {
-	let bytes = s.as_bytes();
-	if bytes.len() > 1 {
-		bytes[0] as Atom * bytes[1] as Atom
+	let simplified_rule_set = get_rules();
+	let mut tokenized_data = tokenize(&data);
+	let opcount = run_length_pass(&simplified_rule_set,&mut tokenized_data);
+	println!("operations needed: {}",opcount);
+}
+
+// rule set:
+// convert any atoms not Rn Ar or Y into _
+// _ => __
+// _ => _Rn_Ar
+// _ => _Rn_Y_Ar
+// _ => _Rn_Y_Y_Ar
+//
+// when molecule has length 1, we're done
+
+fn hash(s: &str ) -> u8 {
+	if s == "Rn" {
+		5
+	}
+	else if s == "Ar" {
+		2
+	}
+	else if s == "Y" {
+		1
 	}
 	else {
-		bytes[0] as Atom
+		0
 	}
 }
 
-fn tokenize(s: &str) -> Vec<Atom> {
+fn tokenize(s: &str) -> Vec<u8> {
 	let bytes = s.as_bytes();
 	let mut v = Vec::new();
 	let mut i = 0usize;
 	while i < bytes.len() {
 		if i+1 < bytes.len() && bytes[i+1] >= 97 && bytes[i+1] <= 122 {
-			v.push( bytes[i] as Atom * bytes[i+1] as Atom );
+			v.push( hash(&s[i..=i+1]) );
 			i += 2
 		}
 		else{
-			v.push( bytes[i] as Atom );
+			v.push( hash(&s[i..=i]) );
 			i += 1;
 		}
 	}
 	v
 }
 
-type Rule = (Atom, Vec<Atom>);
+type Rule = (u8, Vec<u8>);
+// _ => __
+// _ => _Rn_Ar
+// _ => _Rn_Y_Ar
+// _ => _Rn_Y_Y_Ar
 
-fn get_rules(s:&str) -> (Vec<Rule>,HashMap<Atom,&str>) {
-	let r = parse(s);
-	let mut v = Vec::new();
-	let mut map = HashMap::new();
-	map.insert(hash("C"), "C");
-	map.insert(hash("Y"), "Y");
-	map.insert(hash("Rn"), "Rn");
-	map.insert(hash("Ar"), "Ar");
-	for (f,t) in r {
-		let key = hash(f);
-		if !map.contains_key(&key) {
-			map.insert(key,f);
+fn get_rules() -> Vec<Rule> {
+	vec![
+		(0,vec![0,0]),
+		(0,vec![0,5,0,2]),
+		(0,vec![0,5,0,1,0,2]),
+		(0,vec![0,5,0,1,0,1,0,2]),
+	]
+}
+
+fn rule_match(rule: &Rule, data:&[u8], ix: usize) -> bool {
+	if rule.1.len() + ix > data.len() {
+		false
+	}
+	else {
+		rule.1 == &data[ix..ix+rule.1.len()]
+	}
+}
+
+fn run_length_pass(rules: &Vec<Rule>,data: &mut Vec<u8>) -> i32 {
+	let mut ix = data.len();
+	let mut opcount = 0;
+	loop {
+		if data.len() == 1 {
+			return opcount
 		}
-		v.push((key,tokenize(t)));
-	}
-	(v,map)
-}
-
-pub fn minimize(rules: &str, data: &str) -> i32 {
-	let (input,_) = get_rules(&rules);
-	let molecule = tokenize(&data);
-	let (s,count) = minimize_internal(&input,&molecule);
-	if s == tokenize("e") {
-		count
-	}
-	else {
-		-1
-	}
-}
-
-fn minimize_y(rules: &Vec<Rule>,data: &[Atom]) -> (Vec<Atom>,i32) {
-	if let Some(y) = find_y_no_rnar(data) {
-		let (mut r,o) = minimize_brute(rules, &data[..y]);
-		let (mut r2,o2) = minimize_y(rules, &data[y+1..]);
-		r.push(89);
-		r.append(&mut r2);
-		(r,o+o2)
-	}
-	else {
-		minimize_brute(rules,data)
-	}
-}
-
-fn minimize_internal(rules: &Vec<Rule>,data: &[Atom]) -> (Vec<Atom>,i32) {
-	let mut ops = 0i32;
-	let result = if let Some((x,y)) = find_rnar(&data) {
-		let (mut r1,o1) = minimize_internal(rules,&data[x+1..y]);
-		let (mut r2,o2) = minimize_internal(rules, &data[y+1..]);
-		ops += o1 + o2;
-		let head = &data[0..=x];
-		let mut rec = Vec::with_capacity(1+head.len()+r1.len()+r2.len());
-		rec.extend_from_slice(head);
-		rec.append(&mut r1);
-		rec.push(7410);
-		rec.append(&mut r2);
-		rec
-	}
-	else {
-		data.to_vec()
-	};
-
-	let (r3,o3) = minimize_y(rules, &result);
-
-	(r3,ops+o3)
-}
-
-
-fn find_y_no_rnar(data:&[Atom]) -> Option<usize> {
-	let rn = 9020;
-	let ar = 7410;
-	let mut level = 1;
-	for x in 0..data.len() {
-		let c = data[x];
-		if c == rn {
-			level += 1;
-		} else if level == 1 && c == 89 {
-			return Some(x)
-		} else if c == ar {
-			level -= 1;
+		if ix > 0 {
+			ix -= 1;
+		} else {
+			//return opcount + run_length_pass(rules,data)
 		}
-	}
-	None
-}
+		for rule in rules {
+			if rule_match( &rule, data, ix ) {
+				data.drain(ix+1..ix+rule.1.len());
+				opcount += 1;
 
-fn find_rnar(data:&[Atom]) -> Option<(usize,usize)> {
-	let rn = 9020;
-	let ar = 7410;
-	for x in 0..data.len() {
-		if data[x] == rn {
-			let mut level = 1i32;
-			for y in x+1..data.len() {
-				let c = data[y];
-				if c == rn {
-					level += 1;
-				} else if level == 1 && c == ar {
-					return Some((x,y))
-				} else if c == ar {
-					level -= 1;
+				// drain tail of zeroes
+				if data.len() > ix + 1 {
+					if rule_match( &rules[0], data, ix ) {
+						data.drain(ix..=ix);
+						opcount += 1;
+					}
 				}
-			}
-			panic!("unparsable Rn ... Ar");
-		}
-	}
-	None
-}
 
-fn minimize_brute(rules: &Vec<Rule>,data: &[Atom]) -> (Vec<Atom>,i32) {
-	for (from,to) in rules {
-		if to.len() <= data.len() {
-			for ix in 0..=data.len()-to.len() {
-				if &data[ix..ix+to.len()] == &to[..] {
-					let mut v = Vec::with_capacity(data.len() - to.len() + 1 );
-					v.extend_from_slice(&data[..ix]);
-					v.push(*from);
-					v.extend_from_slice(&data[ix+to.len()..]);
-					let (n,i) = minimize_brute(rules,&v);
-					return (n,i+1)
-				}
+				break;
 			}
 		}
 	}
-	(data.to_vec(),0)
 }
 
-fn reverse(lookup:HashMap<Atom,&str>,list : Vec<Atom> )-> String {
-	let mut r = String::with_capacity(list.len()*2);
-	for a in list {
-		r.push_str(lookup[&a]);
-	}
-	r
-}
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 
-	fn ho(s:&str,o:i32) -> (Vec<Atom>,i32) {
-		(tokenize(s),o)
-	}
-
-	fn rule(f:&str,t:&str) -> Rule {
-		(hash(f),tokenize(t))
-	}
-
-	#[test]
-	fn test_part2() {
-		let rules = std::fs::read_to_string("19-rules.txt").unwrap();
-
-
-
-		assert_eq!(3, minimize(&rules, "CRnSiRnFYCaRnFArArFArAl"));
-
-
-	//	let (_,lookup) = get_rules(&rules);
-	//	let data = std::fs::read_to_string("19.txt").unwrap();
-//		assert_eq!("CRnSiRnFYCaRnFArArFArAl",reverse(lookup, vec![67, 9020, 8715, 9020, 70, 89, 6499, 9020, 70, 7410, 7410,70,7410,7020]));
-
-//		assert_eq!(509, minimize(&rules, &data));
-	}
-
-	// #[test]
-	// fn test_part1() {
-	// 	let rules = std::fs::read_to_string("19-rules.txt").unwrap();
-	// 	let data = std::fs::read_to_string("19.txt").unwrap();
-	// 	let map = run(&rules.replace("\r\n", "\n"), &data);
-	// 	assert_eq!(509, map.len());
-	// }
-
-	// #[test]
-	// fn test_minimizebrute() {
-	// 	assert_eq!(
-	// 		ho("F",6),
-	// 		minimize_brute(
-	// 			&vec![
-	// 				rule("Ca","CaCa"),
-	// 				rule("Ca","SiRnMgAr"),
-	// 				rule("F","CaF"),
-	// 				rule("Ca","SiTh"),
-	// 			],
-	// 			&tokenize("SiThCaCaSiRnMgArF")));
-	// }
-
-	// #[test]
-	// fn test_minimizebrute_different_rule_order() {
-	// 	assert_eq!(
-	// 		ho("F",6),
-	// 		minimize_brute(
-	// 			&vec![
-	// 				rule("Ca","SiRnMgAr"),
-	// 				rule("F","CaF"),
-	// 				rule("Ca","SiTh"),
-	// 				rule("Ca","CaCa"),
-	// 			],
-	// 			&tokenize("SiThCaCaSiRnMgArF")));
-	// }
-
-	#[test]
-	fn test_rnar() {
-		let data = tokenize("ThRnFRnTArAr");
-		assert_eq!(Some((1,6)),find_rnar(&data));
-	}
-
-	#[test]
-	fn test_ynornar() {
-		let data = tokenize("ThRnYArAYBYC");
-		assert_eq!(Some(5),find_y_no_rnar(&data));
-	}
 	#[test]
 	fn test_tokenize() {
-		assert_eq!(vec![82*110], tokenize("Rn"));
-		assert_eq!(vec![67,82*110,65*108,65*114], tokenize("CRnAlAr"));
+		let t = tokenize("SiRnFYCaFArSi");
+		assert_eq!(vec![0,5,0,1,0,0,2,0],t);
 	}
 
 	#[test]
-	fn test_hash() {
-		assert_eq!(82*110, hash("Rn"));
-		assert_eq!(67, hash("C"));
+	fn test_rulematch() {
+		let data = vec![0,0,5,0,0,2];
+		let rule = (0,vec![0,0]);
+
+		assert!(rule_match(&rule, &data, 3));
+		assert!(rule_match(&rule, &data, 0));
+
+		assert!(!rule_match(&rule, &data, 1));
+		assert!(!rule_match(&rule, &data, 2));
+		assert!(!rule_match(&rule, &data, 4));
+		assert!(!rule_match(&rule, &data, 5));
+	}
+
+	#[test]
+	fn test_rlp() {
+		let mut v = vec![0,0,5,0,0,2];
+		let opcount = run_length_pass(&get_rules(),&mut v);
+		assert_eq!(3, opcount);
+		assert_eq!(vec![0],v);
+	}
+
+	#[test]
+	fn test_rlp_trailing_zero() {
+		let mut v = vec![0, 5, 0, 0, 0, 0, 2, 0, 5, 0, 0, 0, 2, 0];
+		let opcount = run_length_pass(&get_rules(),&mut v);
+		assert_eq!(9, opcount);
+		assert_eq!(vec![0],v);
+	}
+
+	#[test]
+	fn test_rlp_trailing_zero_within_rnar() {
+		let mut v = vec![0, 5, 0, 5, 0, 2, 0, 2, 0, 5, 0, 0, 0, 2, 0];
+		let opcount = run_length_pass(&get_rules(),&mut v);
+		assert_eq!(9, opcount);
+		assert_eq!(vec![0],v);
 	}
 
 	#[test]
