@@ -80,19 +80,28 @@ fn tokenize(s: &str) -> Vec<Atom> {
 
 type Rule = (Atom, Vec<Atom>);
 
-fn get_rules(s:&str) -> Vec<Rule> {
+fn get_rules(s:&str) -> (Vec<Rule>,HashMap<Atom,&str>) {
 	let r = parse(s);
 	let mut v = Vec::new();
+	let mut map = HashMap::new();
+	map.insert(hash("C"), "C");
+	map.insert(hash("Y"), "Y");
+	map.insert(hash("Rn"), "Rn");
+	map.insert(hash("Ar"), "Ar");
 	for (f,t) in r {
-		v.push((hash(f),tokenize(t)));
+		let key = hash(f);
+		if !map.contains_key(&key) {
+			map.insert(key,f);
+		}
+		v.push((key,tokenize(t)));
 	}
-	v
+	(v,map)
 }
 
 pub fn minimize(rules: &str, data: &str) -> i32 {
-	let input = get_rules(&rules);
+	let (input,_) = get_rules(&rules);
 	let molecule = tokenize(&data);
-	let (s,count) = minimize_internal(&input,&molecule[..]);
+	let (s,count) = minimize_internal(&input,&molecule);
 	if s == tokenize("e") {
 		count
 	}
@@ -101,15 +110,28 @@ pub fn minimize(rules: &str, data: &str) -> i32 {
 	}
 }
 
+fn minimize_y(rules: &Vec<Rule>,data: &[Atom]) -> (Vec<Atom>,i32) {
+	if let Some(y) = find_y_no_rnar(data) {
+		let (mut r,o) = minimize_brute(rules, &data[..y]);
+		let (mut r2,o2) = minimize_y(rules, &data[y+1..]);
+		r.push(89);
+		r.append(&mut r2);
+		(r,o+o2)
+	}
+	else {
+		minimize_brute(rules,data)
+	}
+}
+
 fn minimize_internal(rules: &Vec<Rule>,data: &[Atom]) -> (Vec<Atom>,i32) {
 	let mut ops = 0i32;
-	let mut result = if let Some((x,y)) = find_rnar(&data[..]) {
+	let result = if let Some((x,y)) = find_rnar(&data) {
 		let (mut r1,o1) = minimize_internal(rules,&data[x+1..y]);
 		let (mut r2,o2) = minimize_internal(rules, &data[y+1..]);
 		ops += o1 + o2;
 		let head = &data[0..=x];
 		let mut rec = Vec::with_capacity(1+head.len()+r1.len()+r2.len());
-		rec.append(&mut head.to_vec());
+		rec.extend_from_slice(head);
 		rec.append(&mut r1);
 		rec.push(7410);
 		rec.append(&mut r2);
@@ -119,21 +141,11 @@ fn minimize_internal(rules: &Vec<Rule>,data: &[Atom]) -> (Vec<Atom>,i32) {
 		data.to_vec()
 	};
 
-	let mut workslice = &result[..];
-	workslice = &workslice[1..2];
+	let (r3,o3) = minimize_y(rules, &result);
 
-	let a = result.split_at(4);
-
-
-
-	// x () , () y
-
-	(result,ops)
+	(r3,ops+o3)
 }
 
-
-// fn minimize_rnar(rules: &Vec<(&str, &str)>) -> (String,i32) {
-// }
 
 fn find_y_no_rnar(data:&[Atom]) -> Option<usize> {
 	let rn = 9020;
@@ -174,11 +186,95 @@ fn find_rnar(data:&[Atom]) -> Option<(usize,usize)> {
 	None
 }
 
-// Y 89
+fn minimize_brute(rules: &Vec<Rule>,data: &[Atom]) -> (Vec<Atom>,i32) {
+	for (from,to) in rules {
+		if to.len() <= data.len() {
+			for ix in 0..=data.len()-to.len() {
+				if &data[ix..ix+to.len()] == &to[..] {
+					let mut v = Vec::with_capacity(data.len() - to.len() + 1 );
+					v.extend_from_slice(&data[..ix]);
+					v.push(*from);
+					v.extend_from_slice(&data[ix+to.len()..]);
+					let (n,i) = minimize_brute(rules,&v);
+					return (n,i+1)
+				}
+			}
+		}
+	}
+	(data.to_vec(),0)
+}
+
+fn reverse(lookup:HashMap<Atom,&str>,list : Vec<Atom> )-> String {
+	let mut r = String::with_capacity(list.len()*2);
+	for a in list {
+		r.push_str(lookup[&a]);
+	}
+	r
+}
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	fn ho(s:&str,o:i32) -> (Vec<Atom>,i32) {
+		(tokenize(s),o)
+	}
+
+	fn rule(f:&str,t:&str) -> Rule {
+		(hash(f),tokenize(t))
+	}
+
+	#[test]
+	fn test_part2() {
+		let rules = std::fs::read_to_string("19-rules.txt").unwrap();
+
+
+
+		assert_eq!(3, minimize(&rules, "CRnSiRnFYCaRnFArArFArAl"));
+
+
+	//	let (_,lookup) = get_rules(&rules);
+	//	let data = std::fs::read_to_string("19.txt").unwrap();
+//		assert_eq!("CRnSiRnFYCaRnFArArFArAl",reverse(lookup, vec![67, 9020, 8715, 9020, 70, 89, 6499, 9020, 70, 7410, 7410,70,7410,7020]));
+
+//		assert_eq!(509, minimize(&rules, &data));
+	}
+
+	// #[test]
+	// fn test_part1() {
+	// 	let rules = std::fs::read_to_string("19-rules.txt").unwrap();
+	// 	let data = std::fs::read_to_string("19.txt").unwrap();
+	// 	let map = run(&rules.replace("\r\n", "\n"), &data);
+	// 	assert_eq!(509, map.len());
+	// }
+
+	// #[test]
+	// fn test_minimizebrute() {
+	// 	assert_eq!(
+	// 		ho("F",6),
+	// 		minimize_brute(
+	// 			&vec![
+	// 				rule("Ca","CaCa"),
+	// 				rule("Ca","SiRnMgAr"),
+	// 				rule("F","CaF"),
+	// 				rule("Ca","SiTh"),
+	// 			],
+	// 			&tokenize("SiThCaCaSiRnMgArF")));
+	// }
+
+	// #[test]
+	// fn test_minimizebrute_different_rule_order() {
+	// 	assert_eq!(
+	// 		ho("F",6),
+	// 		minimize_brute(
+	// 			&vec![
+	// 				rule("Ca","SiRnMgAr"),
+	// 				rule("F","CaF"),
+	// 				rule("Ca","SiTh"),
+	// 				rule("Ca","CaCa"),
+	// 			],
+	// 			&tokenize("SiThCaCaSiRnMgArF")));
+	// }
 
 	#[test]
 	fn test_rnar() {
@@ -202,28 +298,6 @@ mod tests {
 		assert_eq!(82*110, hash("Rn"));
 		assert_eq!(67, hash("C"));
 	}
-
-	// #[test]
-	// fn test_part2() {
-	// 	let rules = std::fs::read_to_string("19-rules.txt")
-	// 		.unwrap()
-	// 		.replace("\r\n", "\n")
-	// 		.replace("Rn", "(")
-	// 		.replace("Ar", ")");
-	// 	let data = std::fs::read_to_string("19.txt")
-	// 		.unwrap()
-	// 		.replace("Rn", "(")
-	// 		.replace("Ar", ")");;
-	// 	assert_eq!(509, minimize(&rules, &data));
-	// }
-
-	// #[test]
-	// fn test_part1() {
-	// 	let rules = std::fs::read_to_string("19-rules.txt").unwrap();
-	// 	let data = std::fs::read_to_string("19.txt").unwrap();
-	// 	let map = run(&rules.replace("\r\n", "\n"), &data);
-	// 	assert_eq!(509, map.len());
-	// }
 
 	#[test]
 	fn test_withtestinput() {
