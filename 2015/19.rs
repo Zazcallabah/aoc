@@ -49,10 +49,51 @@ fn run(rules: &str, data: &str) -> Vec<String> {
 	keys
 }
 
+type Atom = u32;
+
+fn hash(s: &str ) -> Atom {
+	let bytes = s.as_bytes();
+	if bytes.len() > 1 {
+		bytes[0] as Atom * bytes[1] as Atom
+	}
+	else {
+		bytes[0] as Atom
+	}
+}
+
+fn tokenize(s: &str) -> Vec<Atom> {
+	let bytes = s.as_bytes();
+	let mut v = Vec::new();
+	let mut i = 0usize;
+	while i < bytes.len() {
+		if i+1 < bytes.len() && bytes[i+1] >= 97 && bytes[i+1] <= 122 {
+			v.push( bytes[i] as Atom * bytes[i+1] as Atom );
+			i += 2
+		}
+		else{
+			v.push( bytes[i] as Atom );
+			i += 1;
+		}
+	}
+	v
+}
+
+type Rule = (Atom, Vec<Atom>);
+
+fn get_rules(s:&str) -> Vec<Rule> {
+	let r = parse(s);
+	let mut v = Vec::new();
+	for (f,t) in r {
+		v.push((hash(f),tokenize(t)));
+	}
+	v
+}
+
 pub fn minimize(rules: &str, data: &str) -> i32 {
-	let input = parse(&rules);
-	let (s,count) = minimize_internal(&input,&data);
-	if s == "e" {
+	let input = get_rules(&rules);
+	let molecule = tokenize(&data);
+	let (s,count) = minimize_internal(&input,&molecule[..]);
+	if s == tokenize("e") {
 		count
 	}
 	else {
@@ -60,46 +101,80 @@ pub fn minimize(rules: &str, data: &str) -> i32 {
 	}
 }
 
-fn minimize_internal(rules: &Vec<(&str, &str)>,data: &str) -> (String,i32) {
+fn minimize_internal(rules: &Vec<Rule>,data: &[Atom]) -> (Vec<Atom>,i32) {
 	let mut ops = 0i32;
-	if let Some((x,y)) = find_paren(data) {
-		let (replacewith,opcount) = minimize_internal(rules,&data[x+1..y]);
-		ops += opcount;
+	let mut result = if let Some((x,y)) = find_rnar(&data[..]) {
+		let (mut r1,o1) = minimize_internal(rules,&data[x+1..y]);
+		let (mut r2,o2) = minimize_internal(rules, &data[y+1..]);
+		ops += o1 + o2;
+		let head = &data[0..=x];
+		let mut rec = Vec::with_capacity(1+head.len()+r1.len()+r2.len());
+		rec.append(&mut head.to_vec());
+		rec.append(&mut r1);
+		rec.push(7410);
+		rec.append(&mut r2);
+		rec
 	}
+	else {
+		data.to_vec()
+	};
 
-	(String::from("e"),1)
+	let mut workslice = &result[..];
+	workslice = &workslice[1..2];
+
+	let a = result.split_at(4);
+
+
+
+	// x () , () y
+
+	(result,ops)
 }
 
 
 // fn minimize_rnar(rules: &Vec<(&str, &str)>) -> (String,i32) {
 // }
 
-fn find_paren(data:&str) -> Option<(usize,usize)> {
-		if let Some(x) = data.find("(") {
-			let mut level = 0;
-			if let Some(y) = data.find(|c:char| {
-				if c == '(' {
-					level += 1;
-					false
-				} else if level == 1 && c == ')' {
-					true
-				} else if c == ')' {
-					level -= 1;
-					false
-				}
-				else {
-					false
-				}
-		}) {
-			return Some((x,y))
+fn find_y_no_rnar(data:&[Atom]) -> Option<usize> {
+	let rn = 9020;
+	let ar = 7410;
+	let mut level = 1;
+	for x in 0..data.len() {
+		let c = data[x];
+		if c == rn {
+			level += 1;
+		} else if level == 1 && c == 89 {
+			return Some(x)
+		} else if c == ar {
+			level -= 1;
 		}
-		else
-		{
+	}
+	None
+}
+
+fn find_rnar(data:&[Atom]) -> Option<(usize,usize)> {
+	let rn = 9020;
+	let ar = 7410;
+	for x in 0..data.len() {
+		if data[x] == rn {
+			let mut level = 1i32;
+			for y in x+1..data.len() {
+				let c = data[y];
+				if c == rn {
+					level += 1;
+				} else if level == 1 && c == ar {
+					return Some((x,y))
+				} else if c == ar {
+					level -= 1;
+				}
+			}
 			panic!("unparsable Rn ... Ar");
 		}
 	}
 	None
 }
+
+// Y 89
 
 #[cfg(test)]
 mod tests {
@@ -107,10 +182,25 @@ mod tests {
 
 	#[test]
 	fn test_rnar() {
+		let data = tokenize("ThRnFRnTArAr");
+		assert_eq!(Some((1,6)),find_rnar(&data));
+	}
 
-		let data = String::from("0123(5(7))");
-		assert_eq!(Some((4,9)),find_paren(&data));
+	#[test]
+	fn test_ynornar() {
+		let data = tokenize("ThRnYArAYBYC");
+		assert_eq!(Some(5),find_y_no_rnar(&data));
+	}
+	#[test]
+	fn test_tokenize() {
+		assert_eq!(vec![82*110], tokenize("Rn"));
+		assert_eq!(vec![67,82*110,65*108,65*114], tokenize("CRnAlAr"));
+	}
 
+	#[test]
+	fn test_hash() {
+		assert_eq!(82*110, hash("Rn"));
+		assert_eq!(67, hash("C"));
 	}
 
 	// #[test]
