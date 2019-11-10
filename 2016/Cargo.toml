@@ -5,7 +5,7 @@ edition = "2018"
 
 [[bin]]
 name = "2016"
-path = "4.rs"
+path = "8.rs"
 
 [dependencies]
 regex = "1"

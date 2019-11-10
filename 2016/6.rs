@@ -1,9 +1,5 @@
-
-// In this model, the same message is sent repeatedly. You've recorded the repeating
-// message signal (your puzzle input), but the data seems quite corrupted - almost too badly to recover. Almost.
 use std::collections::HashMap;
 
-// All you need to do is figure out which character is most frequent for each position. For example, suppose you had recorded the following messages:
 struct Collector {
 	data : Vec<HashMap<char,i32>>
 }
