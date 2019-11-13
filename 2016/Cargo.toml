@@ -9,3 +9,4 @@ path = "9.rs"
 
 [dependencies]
 regex = "1"
+lazy_static = "1"
