@@ -2,6 +2,16 @@
 <html>
 <head><meta charset="utf-8" /> <title></title></head>
 <body>
+	<div class="legend">
+		<div>&#11157; input A  &#11157; input B</div>
+		<div style="font-weight: bold; transform: translate(70px,70px)">bot id#</div>
+		<div style="transform: translate(90px,0) rotate(-.25turn)">high output</div>
+		<div style="transform: translate(60px,120px)">low output</div>
+	</div>
+
+	<pre id="answer">
+	</pre>
+
 	<div id="content">
 	</div>
 
@@ -237,27 +247,47 @@ bot 133 gives low to bot 179 and high to bot 80
 bot 53 gives low to output 0 and high to bot 6
 bot 48 gives low to bot 190 and high to bot 156</div>
 <style>
+.input {
+	background: lightcyan;
+}
+.output {
+	background: lightgoldenrodyellow;
+}
+.alert1 {
+	background: lightpink !important;
+}
+.alert2 {
+	background: lightgreen !important;
+}
+
+.box > div {
+	position: absolute;
+}
 .arrow {
 	width:1px;
 	border-left: 1px dashed red;
 	position: absolute;
 	z-index: -1;
 }
-.box {
+.box, .legend {
 	width: 100px;
 	height: 100px;
 	margin: 3px;
 	border: 1px solid black;
-	background: white;
 	padding: 1px;
+	font: 10pt mono;
 	position: absolute;
-
+	overflow: visible;
+}
+.legend {
+	width: 200px;
+	height: 200px;
+	font: 11pt mono;
+	left: 500px;
+	top: 100px;
 }
 .out {
 	background: lightgreen;
-}
-pre {
-	margin:0
 }
 </style>
 	<script type="text/javascript">
@@ -279,16 +309,17 @@ function Bot(id)
 Bot.prototype.getLeft = function(bots) {
 	if( this.left != -1 )
 		return this.left;
-	if( this.parentAid == -2 && this.parentBid == -2 )
-		this.left = 1200;
-	else if( this.parentAid == -2 )
-		this.left = bots[this.parentBid].getLeft(bots) - 60;
-	else if( this.parentBid == -2 )
-		this.left = bots[this.parentAid].getLeft(bots) + 60;
+	if( this.parentAid == -2 || this.parentBid == -2 )
+		this.left = 50;
 	else
-		this.left = bots[this.parentAid].getLeft(bots) + 60;
-
-
+	{
+		var b = bots[this.parentBid].getLeft(bots);
+		var a = bots[this.parentAid].getLeft(bots);
+		if( b < a )
+			this.left = b + 120;
+		else
+			this.left = a + 120;
+	}
 	return this.left;
 }
 
@@ -296,7 +327,7 @@ Bot.prototype.getTop = function(bots) {
 	if( this.top != -1 )
 		return this.top;
 	if( this.parentAid == -2 && this.parentBid == -2 )
-		this.top = 0;
+		this.top = 80;
 	else if( this.parentAid == -2 )
 		this.top = bots[this.parentBid].getTop(bots) + 120;
 	else if( this.parentBid == -2 )
@@ -306,53 +337,70 @@ Bot.prototype.getTop = function(bots) {
 		var b = bots[this.parentBid].getTop(bots);
 		var a = bots[this.parentAid].getTop(bots);
 		if( b > a )
-			this.top = b + 120;
+			this.top = b;
 		else
-			this.top = a + 120;
+			this.top = a;
 	}
 
 	return this.top;
 }
 
-Bot.prototype.getLink = function(bots) {
-	var link = "";
-	if( this.parentAid >= 0 )
+Bot.prototype.getInputLabel = function(){
+	var label = "";
+	if( this.parentAid == -2 )
+		label +=`<div style='transform: translate(-45px,25px) rotate(-.25turn)'>input ${this.parentAvalue}</div>`;
+	if( this.parentBid == -2 )
+		label +=`<div style='transform: translate(0,-20px)'>input ${this.parentBvalue}</div>`;
+	return label;
+}
+
+Bot.prototype.getClassList = function() {
+	var classes = "box";
+	if(this.isAnswer1())
 	{
-		var pa = bots[this.parentAid];
-		var da = this.top - pa.top;
-		if( da > 120 )
-		{
-			link +=  `<div class='arrow' style='height:${da}px;left:${this.left+20}px;top:${pa.top+100}px'></div>`
-		}
+		classes += " alert1";
 	}
-	if( this.parentBid >= 0 )
+	if( this.isAnswer2() != -1 )
 	{
-		var pb = bots[this.parentBid];
-		var db = this.top - pb.top;
-		if( db > 120 )
-		{
-			link +=  `<div class='arrow' style='height:${db}px;left:${this.left+80}px;top:${pb.top+100}px'></div>`
-		}
+		classes += " alert2";
 	}
 
-	return link;
+	if( this.parentAid == -2 || this.parentBid == -2 )
+	{
+		classes += " input";
+	}
+
+	if( isNaN(this.outHighId) || isNaN(this.outLowId) )
+	{
+		classes += " output";
+	}
+	return classes;
+}
+
+Bot.prototype.getOutputLabel = function() {
+	var outs = `<div style="transform: translate(80px,50px) rotate(-0.25turn)">&#11015;${this.outHighValue}</div>
+	<div style="transform: translate(40px,80px)">&#11015;${this.outLowValue}</div>`
+	if( isNaN(this.outLowId) )
+	{
+		outs += `<div style="transform: translate(40px,105px)">&#11015;${this.outLowId}</div>`
+	}
+	if( isNaN(this.outHighId) )
+	{
+		outs += `<div style="transform: translate(95px,40px) rotate(-0.25turn)">&#11015;${this.outHighId}</div>`
+	}
+	return outs;
 }
 
 Bot.prototype.getStr = function(bots) {
-	return `<div class='box${
-		this.outLowId=="out0"||
-		this.outLowId=="out1"||
-		this.outLowId=="out2"||
-		this.outHighId=="out0"||
-		this.outHighId=="out1"||
-		this.outHighId=="out2" ? " out":""}' style='${(this.parentAvalue==17&&this.parentBvalue==61||this.parentBvalue==17&&this.parentAvalue==61)?"background:pink; ":""} top: ${this.getTop(bots)}px; left: ${this.getLeft(bots)}px'>
-<pre>h:${this.parentAvalue}   l:${this.parentBvalue}
-i:${this.parentAid}   i:${this.parentBid}
 
-    id:${this.id}
-
-l:${this.outLowValue}    h:${this.outHighValue}
-${isNaN(this.outLowId)?this.outLowId:""}      ${isNaN(this.outHighId)?this.outHighId:""}</div>`
+	var inputs = this.getInputLabel();
+	var classes = this.getClassList();
+	var outputs = this.getOutputLabel();
+	return `<div class='${classes}' style='top: ${this.getTop(bots)}px; left: ${this.getLeft(bots)}px'>
+	${inputs}
+	${outputs}
+	<div>&#11157;${this.parentAvalue} &nbsp;&#11157;${this.parentBvalue}</div>
+<div style='left:30px; top:30px;font-weight:bold;'>id:${this.id}</div></div>`
 }
 Bot.prototype.init = function(val) {
 	if( this.parentAid == -1 ) {
@@ -405,6 +453,25 @@ Bot.prototype.reportParent = function(fromid,isLow){
 			this.parentAid = fromid;
 		}
 	}
+}
+
+Bot.prototype.isAnswer1 = function() {
+	return this.parentAvalue==17 &&
+		this.parentBvalue==61 ||
+		this.parentBvalue==17 &&
+		this.parentAvalue==61;
+}
+
+Bot.prototype.isAnswer2 = function() {
+	if( this.outLowId=="out0"||
+		this.outLowId=="out1"||
+		this.outLowId=="out2" )
+		return this.outLowValue;
+	if( this.outHighId=="out0"||
+		this.outHighId=="out1"||
+		this.outHighId=="out2")
+		return this.outHighValue;
+	return -1;
 }
 
 Bot.prototype.setValues = function(bots,returnid) {
@@ -508,12 +575,16 @@ for( var b in bots ) {
 	content.innerHTML += bots[b].getStr(bots)
 }
 
-
+var output = document.getElementById("answer");
+var product = 1;
 for( var b in bots ) {
-	var content = document.getElementById("content");
-	content.innerHTML = bots[b].getLink(bots) + content.innerHTML
+	if( bots[b].isAnswer1() )
+		output.innerHTML += `bot id is ${b}\n`;
+	var a = bots[b].isAnswer2();
+	if( a != -1 )
+		product *= a;
 }
-
+output.innerHTML += `output product is ${product}\n`;
 
 </script>
 
