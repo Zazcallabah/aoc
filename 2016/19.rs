@@ -19,24 +19,28 @@
 // our winning elf is 2(n - p)+1
 
 struct Verificator {
-	v : Vec<Option<u8>>
+	v: Vec<Option<u8>>,
 }
 
 impl std::fmt::Display for Verificator {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		let row = 	self.v.iter()
-			.map(|b| if let Some(c) = b { 48u8+c } else { 46 } )
-			.map(|b| if b > 57 { b+7 } else { b })
+		let row = self
+			.v
+			.iter()
+			.map(|b| if let Some(c) = b { 48u8 + c } else { 46 })
+			.map(|b| if b > 57 { b + 7 } else { b })
 			.collect::<Vec<u8>>();
 
-		writeln!(f, "{}", String::from_utf8(row).unwrap() )
+		writeln!(f, "{}", String::from_utf8(row).unwrap())
 	}
 }
 
 impl Verificator {
-	fn new(size:u32)->Verificator{
-		let sizeu : u8 = size as u8;
-		Verificator{ v: (1..=sizeu).into_iter().map(|i| Some(i) ).collect::<Vec<Option<u8>>>() }
+	fn new(size: u32) -> Verificator {
+		let sizeu: u8 = size as u8;
+		Verificator {
+			v: (1..=sizeu).map(Some).collect::<Vec<Option<u8>>>(),
+		}
 	}
 
 	fn calculate(&mut self) -> u8 {
@@ -52,27 +56,25 @@ impl Verificator {
 					kill_next = false;
 					count -= 1;
 				}
-			}
-			else {
-				if self.v[current].is_some() {
-					kill_next = true;
-					last = self.v[current].unwrap();
-				}
-
+			} else if self.v[current].is_some() {
+				kill_next = true;
+				last = self.v[current].unwrap();
 			}
 			if count <= 1 {
-				break
+				break;
 			}
 		}
 		last
 	}
 }
 
-const fn num_bits<T>() -> usize { std::mem::size_of::<T>() * 8 }
+const fn num_bits<T>() -> usize {
+	std::mem::size_of::<T>() * 8
+}
 
 fn log_2(x: u32) -> u32 {
-    assert!(x > 0);
-    num_bits::<u32>() as u32 - x.leading_zeros() - 1
+	assert!(x > 0);
+	num_bits::<u32>() as u32 - x.leading_zeros() - 1
 }
 
 #[cfg(test)]
@@ -110,27 +112,75 @@ mod test {
 
 	#[test]
 	fn test_part1() {
-		assert_eq!(1842613,get_winner(3018458));
+		assert_eq!(1842613, get_winner(3018458));
 	}
 
 	#[test]
-	fn testverify(){
+	fn testverify() {
 		for i in 1..100 {
 			verify(i);
 		}
 	}
 
-	fn verify(n:u32) {
+	#[test]
+	fn test_verify_2() {
+		let v: Vec<u32> = (1..=10).map(verify2).collect();
+		assert_eq!(vec![1, 1, 3, 1, 2, 3, 5, 7, 9, 1], v);
+	}
+
+	#[test]
+	fn test_calc_threes(){
+		let v: Vec<u32> = (1..=10).map(calc_threes).collect();
+		assert_eq!(vec![0, 1, 3, 1, 2, 3, 5, 7, 9, 1], v);
+	}
+
+	#[test]
+	fn test_part2() {
+		assert_eq!(1424135, calc_threes(3018458));
+	}
+
+	fn verify(n: u32) {
 		let mut v = Verificator::new(n);
-		assert_eq!(v.calculate() as u32,get_winner(n));
+		assert_eq!(v.calculate() as u32, get_winner(n));
+	}
+
+	use std::collections::VecDeque;
+
+	fn verify2(len: usize) -> u32 {
+		let mut v: VecDeque<u32> = (1..=len as u32).collect();
+		let start = v.len();
+
+		while v.len() > 1 {
+			if v.len() % 10000 == 0 {
+				let delta = start - v.len();
+				let percent = (delta as f32 / start as f32) * 100f32;
+				println!("{}%", percent.round());
+			}
+			let target = v.len() / 2;
+			let _ = v.remove(target);
+			let tmp = v.pop_front().unwrap();
+			v.push_back(tmp);
+		}
+		v.pop_front().unwrap()
 	}
 }
 
-fn get_series(n:u32)->u32{
+fn calc_threes(n: u32) -> u32 {
+	let floored: f64 = ((n - 1) as f64).log(3f64).floor();
+	let pow: u32 = 3u32.pow(floored as u32);
+	let diff = n - pow;
+	if diff <= pow {
+		diff
+	} else {
+		2 * diff - pow
+	}
+}
+
+fn get_series(n: u32) -> u32 {
 	log_2(n)
 }
 
-fn get_winner(n:u32)->u32{
-	let pow = 2u32.pow( get_series(n) );
+fn get_winner(n: u32) -> u32 {
+	let pow = 2u32.pow(get_series(n));
 	2 * (n - pow) + 1
 }
