@@ -5,9 +5,8 @@ edition = "2018"
 
 [[bin]]
 name = "2016"
-path = "22.rs"
+path = "23.rs"
 
 [dependencies]
 regex = "1"
 lazy_static = "*"
-termion = { git = "https://gitlab.redox-os.org/Jezza/termion", branch = "windows-support" }
