@@ -1,393 +1,164 @@
 #[macro_use]
 extern crate lazy_static;
 
-struct State {
-	reg: [i32; 4],
-	pc: usize,
+#[derive(Debug, PartialEq)]
+enum Op {
+	Jnz,
+	Cpy,
+	Dec,
+	Inc,
+	Tgl,
+	Fac,
+	Add,
+	Mul,
 }
 
-impl State {
-	fn new() -> State {
-		State::from([0, 0, 0, 0])
-	}
-	fn from(reg: [i32; 4]) -> State {
-		State { reg, pc: 0 }
-	}
-	fn lookup_register(name: &str) -> isize {
-		match name {
-			"a" => 0,
-			"b" => 1,
-			"c" => 2,
-			"d" => 3,
-			_ => panic!("bad name"),
+impl From<&str> for Op {
+	fn from(c: &str) -> Op {
+		match c {
+			"jnz" => Op::Jnz,
+			"cpy" => Op::Cpy,
+			"dec" => Op::Dec,
+			"inc" => Op::Inc,
+			"tgl" => Op::Tgl,
+			"fac" => Op::Fac,
+			"add" => Op::Add,
+			"mul" => Op::Mul,
+			_ => panic!("bad op"),
 		}
 	}
 }
 
-trait Op {
-	fn exec(&self, state: &mut State);
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)>;
-	fn tgld(&self) -> Box<dyn Op>;
-	fn ident(&self) -> u32;
+#[derive(Debug, PartialEq)]
+enum R {
+	Int(i32),
+	Reg(u8),
 }
 
-struct Cpy {
-	source: isize,
-	target: isize,
+#[derive(Debug, PartialEq)]
+struct Line {
+	op: Op,
+	r1: R,
+	r2: Option<R>,
 }
-impl Op for Cpy {
-	fn exec(&self, state: &mut State){
-		if self.target >= 0 && self.target < state.reg.len() as isize {
-			state.reg[self.target as usize] = state.reg[self.source as usize];
-		}
-		state.pc += 1;
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Jnz{reg:self.source,jmp:self.target})
-	}
-	fn ident(&self) -> u32 {
-		1
+
+impl std::fmt::Display for Line {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		write!(f, "{:?} {:?} {:?}", self.op, self.r1, self.r2)
 	}
 }
 
-struct Cpi {
-	val: i32,
-	target: isize,
-}
-impl Op for Cpi {
-	fn exec(&self, state: &mut State) {
-		if self.target >= 0 && self.target < state.reg.len() as isize {
-			state.reg[self.target as usize] = self.val;
-		}
-		state.pc += 1;
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Jit{val:self.val,target:self.target})
-	}
-	fn ident(&self) -> u32 {
-		2
-	}
-}
-
-struct Inc {
-	reg: isize,
-}
-impl Op for Inc {
-	fn exec(&self, state: &mut State) {
-		state.reg[self.reg as usize] += 1;
-		state.pc += 1;
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Dec{reg:self.reg})
-	}
-	fn ident(&self) -> u32 {
-		3
-	}
-}
-
-struct Dec {
-	reg: isize,
-}
-impl Op for Dec {
-	fn exec(&self, state: &mut State) {
-		state.reg[self.reg as usize] -= 1;
-		state.pc += 1;
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Inc{reg:self.reg})
-	}
-	fn ident(&self) -> u32 {
-		4
-	}
-}
-
-struct Nop {
-	jmp: isize,
-	val: i32,
-}
-impl Op for Nop {
-	fn exec(&self, state: &mut State) {
-		state.pc += 1;
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Ji{val:self.val,jmp:self.jmp})
-	}
-	fn ident(&self) -> u32 {
-		100
-	}
-}
-
-struct JNop {
-	jmp: isize,
-	reg: isize,
-}
-impl Op for JNop {
-	fn exec(&self, state: &mut State) {
-		state.pc += 1;
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Jnz{reg:self.reg,jmp:self.jmp})
-	}
-	fn ident(&self) -> u32 {
-		101
-	}
-}
-
-struct Ji {
-	jmp: isize,
-	val: i32,
-}
-impl Ji {
-	fn jmp(state: &mut State, jmp: isize) {
-		state.pc = (state.pc as isize + jmp) as usize;
-	}
-}
-impl Op for Ji {
-	fn exec(&self, state: &mut State) {
-		if self.val != 0 {
-			Ji::jmp(state,self.jmp);
-		} else {
-			state.pc += 1;
+impl From<&str> for R {
+	fn from(c: &str) -> R {
+		match c {
+			"a" => R::Reg(0),
+			"b" => R::Reg(1),
+			"c" => R::Reg(2),
+			"d" => R::Reg(3),
+			num => R::Int(num.parse().unwrap()),
 		}
 	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Nop{val:self.val,jmp:self.jmp})
-	}
-	fn ident(&self) -> u32 {
-		5
-	}
 }
 
-struct Jnz {
-	jmp: isize,
-	reg: isize,
-}
-impl Op for Jnz {
-	fn exec(&self, state: &mut State) {
-		if state.reg[self.reg as usize] != 0 {
-			Ji::jmp(state,self.jmp);
-		} else {
-			state.pc += 1;
-		}
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(JNop{reg:self.reg,jmp:self.jmp})
-	}
-	fn ident(&self) -> u32 {
-		6
-	}
-}
-
-struct Jit {
-	target: isize,
-	val: i32,
-}
-impl Op for Jit {
-	fn exec(&self, state: &mut State) {
-		if self.val != 0 {
-			Ji::jmp(state,state.reg[self.target as usize] as isize);
-		} else {
-			state.pc += 1;
-		}
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Cpi{val:self.val,target:self.target})
-	}
-	fn ident(&self) -> u32 {
-		11
-	}
-}
-
-struct Jnzt {
-	target: isize,
-	reg: isize,
-}
-impl Op for Jnzt {
-	fn exec(&self, state: &mut State) {
-		if state.reg[self.reg as usize] != 0 {
-			Ji::jmp(state,state.reg[self.target as usize] as isize);
-		} else {
-			state.pc += 1;
-		}
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		panic!("invalid op");
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Cpy{source:self.reg,target:self.target})
-	}
-	fn ident(&self) -> u32 {
-		6
-	}
-}
-struct Tgl {
-	ix: isize,
-}
-
-impl Op for Tgl {
-	fn exec(&self, state: &mut State) {
-		panic!("invalid op");
-	}
-	fn tgl(&self, state: &mut State, ops: &[Box<dyn Op>]) -> Option<(usize,Box<dyn Op>)> {
-		let targetix = state.pc as isize + state.reg[self.ix as usize] as isize;
-		if targetix < 0 || targetix as usize >= ops.len() {
-			return None;
-		}
-		let targetop = &ops[targetix as usize];
-		let newop = targetop.tgld();
-		state.pc += 1;
-		Some((targetix as usize,newop))
-	}
-	fn ident(&self) -> u32 {
-		10
-	}
-	fn tgld(&self) -> Box<dyn Op> {
-		Box::new(Inc{reg:self.ix})
-	}
-}
-struct Prog {
-	state: State,
-	ops: Vec<Box<dyn Op>>,
-}
-impl Prog {
-	fn run(&mut self) {
-		while self.state.pc < self.ops.len() {
-			let next = &self.ops[self.state.pc];
-			if next.ident() == 10 {
-				if let Some((ix,op)) = next.tgl(&mut self.state,&self.ops) {
-					self.ops[ix] = op;
-				}
-			}
-			else {
-				next.exec(&mut self.state);
-			}
-		}
-	}
-
-	fn from(data:&str) -> Prog {
-		let mut v = Vec::new();
-		for line in data.lines() {
-			let op = Prog::parse(line);
-			v.push( op );
-		}
-
-		Prog {
-			state: State::new(),
-			ops: v,
-		}
-	}
-
-	fn parse(line: &str) -> Box<dyn Op> {
+impl Line {
+	fn new(line: &str) -> Line {
 		lazy_static! {
-			static ref PARSE: regex::Regex = regex::Regex::new(
-				r"(?x)
-		(?P<op>cpy|inc|dec|jnz|tgl)
-		\s+
-		(
-			(?P<source>[a-d])
-			|
-			(?P<imm>-?[0-9]+)
-		)
-		(
-			\s+
-			(
-			(?P<target>[a-d])
-			|
-			(?P<jmp>-?[0-9]+)
-			)
-		)?$"
-			)
-			.unwrap();
+			static ref PARSE: regex::Regex =
+				regex::Regex::new(r"^(cpy|inc|dec|jnz|tgl|fac|mul|add)\s(\S+)\s?(\S+)?$").unwrap();
 		}
-
 		if let Some(cap) = PARSE.captures(line) {
-			match cap.name(&"op").unwrap().as_str() {
-				"cpy" => {
-					let target = State::lookup_register(cap.name(&"target").unwrap().as_str());
-					if let Some(imm) = cap.name(&"imm") {
-						let val = imm.as_str().parse().unwrap();
-						return Box::new(Cpi { val, target });
-					} else {
-						let source = State::lookup_register(cap.name(&"source").unwrap().as_str());
-						return Box::new(Cpy { source, target });
-					}
-				}
-				"inc" => {
-					let reg = State::lookup_register(cap.name(&"source").unwrap().as_str());
-					return Box::new(Inc { reg });
-				}
-				"dec" => {
-					let reg = State::lookup_register(cap.name(&"source").unwrap().as_str());
-					return Box::new(Dec { reg });
-				}
-				"jnz" => {
-					if let Some(result) = cap.name(&"jmp") {
-						let jmp : isize = result.as_str().parse().unwrap();
-						if let Some(imm) = cap.name(&"imm") {
-							let val : i32= imm.as_str().parse().unwrap();
-							return Box::new(Ji { jmp, val });
-						} else {
-							let reg = State::lookup_register(cap.name(&"source").unwrap().as_str());
-							return Box::new(Jnz { reg, jmp, });
-						}
-					}
-					else {
-						let target = State::lookup_register(cap.name(&"target").unwrap().as_str());
-						if let Some(imm) = cap.name(&"imm") {
-							let val : i32= imm.as_str().parse().unwrap();
-							return Box::new(Jit { target, val });
-						} else {
-							let reg = State::lookup_register(cap.name(&"source").unwrap().as_str());
-							return Box::new(Jnzt { reg, target });
-						}
-						}
-				},
-				"tgl" => {
-					let ix = State::lookup_register(cap.name(&"source").unwrap().as_str());
-					return Box::new(Tgl { ix });
-				}
-				_ => (),
-			}
+			let r2: Option<R> = if let Some(c) = cap.get(3) {
+				Some(R::from(c.as_str()))
+			} else {
+				None
+			};
+			let r1: R = R::from(cap.get(2).unwrap().as_str());
+			let op = Op::from(cap.get(1).unwrap().as_str());
+			return Line { op, r1, r2 };
 		}
 		panic!("parsing error");
 	}
 }
 
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn test_line() {
+		let l = Line::new("cpy a b");
+		assert_eq!(R::Reg(0), l.r1);
+		assert_eq!(Some(R::Reg(1)), l.r2);
+		let l = Line::new("cpy c d");
+		assert_eq!(R::Reg(2), l.r1);
+		assert_eq!(Some(R::Reg(3)), l.r2);
+		let b = Line::new("cpy -41 a");
+		assert_eq!(R::Int(-41), b.r1);
+		assert_eq!(Some(R::Reg(0)), b.r2);
+		assert_eq!(Op::Cpy, b.op);
+		let b = Line::new("cpy 41 a");
+		assert_eq!(R::Int(41), b.r1);
+		assert_eq!(Some(R::Reg(0)), b.r2);
+		assert_eq!(Op::Cpy, b.op);
+
+		let l = Line::new("jnz c -5");
+		assert_eq!(R::Reg(2), l.r1);
+		assert_eq!(Some(R::Int(-5)), l.r2);
+		assert_eq!(Op::Jnz, l.op);
+
+		let l = Line::new("tgl c");
+		assert_eq!(R::Reg(2), l.r1);
+		assert_eq!(Op::Tgl, l.op);
+
+		let l = Line::new("inc c");
+		assert_eq!(R::Reg(2), l.r1);
+		assert_eq!(Op::Inc, l.op);
+
+		let l = Line::new("dec c");
+		assert_eq!(R::Reg(2), l.r1);
+		assert_eq!(Op::Dec, l.op);
+	}
+
+	#[test]
+	fn test_prog_jmp() {
+		let mut p = Program::new("cpy 5 a\ndec a\njnz a -1");
+		let state = p.run();
+		assert_eq!(vec![0, 0, 0, 0], state);
+	}
+
+	#[test]
+	fn test_prog() {
+		let mut p = Program::new("inc b\ndec d");
+		let state = p.run();
+		assert_eq!(vec![0, 1, 0, -1], state);
+	}
+
+	#[test]
+	fn test_example() {
+		let mut p = Program::new(
+			r"cpy 2 a
+tgl a
+tgl a
+tgl a
+cpy 1 a
+dec a
+dec a",
+		);
+		let state = p.run();
+
+		assert_eq!(vec![3, 0, 0, 0], state);
+	}
+}
+
 fn main() {
-	let mut p = Prog::from(r"cpy a b
+	let mut p = Program::new(
+		r"cpy 7 a
+cpy a b
 dec b
 cpy a d
-cpy 0 a // 0 6 0 7
-cpy b c // 0 6 6 7
-inc a // 1 11 1 7
-dec c // 1 11 0 7
+cpy 0 a
+cpy b c
+inc a
+dec c
 jnz c -2
 dec d
 jnz d -5
@@ -406,65 +177,319 @@ inc a
 inc d
 jnz d -2
 inc c
-jnz c -5");
-	p.state.reg[0] = 7;
-	p.run();
+jnz c -5",
+	);
+	let r = p.run();
 
-	println!("end state part 1 {:?}",p.state.reg);
+	println!("result state: {:?}", r);
+
+	// having verified that the tgl only ever touches ops downstream,
+	// lets collapse some of thos dec-inc loops into adds
+	let mut p = Program::new(
+		r"cpy 7 a
+cpy a b
+dec b
+cpy a d
+cpy 0 a
+cpy b c
+add c a
+dec d
+jnz d -3
+dec b
+cpy b c
+add b c
+tgl c
+cpy -11 c
+jnz 1 c
+cpy 94 c
+jnz 80 d
+inc a
+inc d
+jnz d -2
+inc c
+jnz c -5",
+	);
+	let r = p.run();
+	println!("do add instead, state: {:?}", r);
+
+	// that double loop in the original program was obviously a mul op
+	let mut p = Program::new(
+		r"cpy 7 a
+cpy a b
+dec b
+cpy a d
+cpy 0 a
+cpy b c
+mul d c
+add c a
+dec b
+cpy b c
+add b c
+tgl c
+cpy -10 c
+jnz 1 c
+cpy 94 c
+jnz 80 d
+inc a
+inc d
+jnz d -2
+inc c
+jnz c -5",
+	);
+	let r = p.run();
+	println!("do mul also, state: {:?}", r);
+
+	// reg b will contain numbers counting down toward 0.
+	// the stuff just before togl is just c=b*2
+	// so tgl will toggle 10, 8, 6, etc, before pc reaches any of them
+	// the final tgl will be 'jnz 1 c' -> cpy 1 c
+	// this it what it looks pre-toggld:
+
+	// cpy -10 c
+	// cpy 1 c
+	// cpy 94 c
+	// cpy 80 d
+	// inc a
+	// dec d
+	// jnz d -2
+	// dec c
+	// jnz c -5
+
+	// that double jnz loop looks like another mul + add
+
+	// cpy 94 c
+	// mul 80 c
+	// add c a
+
+	// but the tgl will destroy it, so we have to short out the tgl first
+	let mut p = Program::new(
+		r"cpy 7 a
+cpy a b
+dec b
+cpy a d
+cpy 0 a
+cpy b c
+mul d c
+add c a
+dec b
+cpy b c
+add b c
+jnz b -8
+cpy 94 c
+cpy 80 d
+inc a
+dec d
+jnz d -2
+dec c
+jnz c -5",
+	);
+	let r = p.run();
+	println!("skip tgl, state: {:?}", r);
+
+
+	// but the tgl will destroy it, so we have to short out the tgl first
+	let mut p = Program::new(
+		r"cpy 7 a
+cpy a b
+dec b
+cpy a d
+cpy 0 a
+cpy b c
+mul d c
+add c a
+dec b
+cpy b c
+add b c
+jnz b -8
+cpy 94 d
+mul 80 d
+add d a",
+	);
+	let r = p.run();
+	println!("more mul & add, state: {:?}", r);
+
+	// we observe that the first lines calculate a! into register a
+	// lets do than in an op, and clean up some cpy:s
+	let mut p = Program::new(
+		r"fac 7 a
+cpy 94 d
+mul 80 d
+add d a",
+	);
+	let r = p.run();
+	println!("final fac state, state: {:?}", r);
+
+
+	// now lets do it for input 12
+	let mut p = Program::new(
+		r"fac 12 a
+cpy 94 d
+mul 80 d
+add d a",
+	);
+	let r = p.run();
+	println!("state: {:?}", r);
+
+
+	println!("part 2 solution: {}", r[0]);
 
 
 }
 
-#[cfg(test)]
-mod tests {
-	use super::*;
-	#[test]
-	fn test_prog_jmp() {
-		let mut p = Prog::from("cpy 5 a\ndec a\njnz a -1");
-		p.run();
-		assert_eq!([0, 0, 0, 0], p.state.reg);
-		assert_eq!(3, p.state.pc);
-	}
-
-	#[test]
-	fn test_prog() {
-		let mut p = Prog::from("inc b\ndec d");
-		p.run();
-		assert_eq!([0, 1, 0, -1], p.state.reg);
-		assert_eq!(2, p.state.pc);
-	}
-
-
-	#[test]
-	fn test_parse_ops() {
-		let b: Box<dyn Op> = Prog::parse("cpy 41 a");
-		assert_eq!(2, b.ident());
-		let b: Box<dyn Op> = Prog::parse("cpy b a");
-		assert_eq!(1, b.ident());
-	}
-
-	#[test]
-	fn test_parse_jump_ops() {
-		let b: Box<dyn Op> = Prog::parse("jnz 41 -3");
-		assert_eq!(5, b.ident());
-		let b: Box<dyn Op> = Prog::parse("jnz b 3");
-		assert_eq!(6, b.ident());
-	}
-
-	#[test]
-	fn test_example() {
-		let mut p = Prog::from(r"cpy 2 a
-tgl a
-tgl a
-tgl a
-cpy 1 a
-dec a
-dec a");
-		p.run();
-
-		assert_eq!([3,0,0,0], p.state.reg);
-		assert_eq!(vec![2, 10, 10, 3, 11, 4, 4], p.ops.iter().map(|o| o.ident() ).collect::<Vec<u32>>());
-	}
-
+struct Program {
+	lines: Vec<Line>,
 }
 
+impl Program {
+	fn new(p: &str) -> Program {
+		Program {
+			lines: p.lines().map(|l| Line::new(l)).collect::<Vec<Line>>(),
+		}
+	}
+
+	fn run(&mut self) -> Vec<i32> {
+		let mut pc = 0usize;
+		let mut reg = vec![0i32; 4];
+		while pc < self.lines.len() {
+			//print!("{} {:?}: {} ->",pc,reg,self.lines[pc]);
+			let jmp = match self.lines[pc].op {
+				Op::Tgl => tgl(&mut self.lines, &mut reg, pc),
+				Op::Dec => dec(&mut self.lines, &mut reg, pc),
+				Op::Inc => inc(&mut self.lines, &mut reg, pc),
+				Op::Jnz => jnz(&mut self.lines, &mut reg, pc),
+				Op::Cpy => cpy(&mut self.lines, &mut reg, pc),
+				Op::Fac => fac(&mut self.lines, &mut reg, pc),
+				Op::Add => add(&mut self.lines, &mut reg, pc),
+				Op::Mul => mul(&mut self.lines, &mut reg, pc),
+			};
+			//	println!("{:?}",reg);
+			pc = (pc as isize + jmp) as usize;
+		}
+		reg
+	}
+}
+
+fn factorize(n: i32) -> i32 {
+	if n == 2 {
+		2
+	} else {
+		n * factorize(n - 1)
+	}
+}
+
+fn mul(program: &mut [Line], reg: &mut [i32], pc: usize) -> isize {
+	let line = &program[pc];
+	let target = match line.r2 {
+		Some(R::Reg(r)) => r as usize,
+		_ => panic!("invalid fac instruction"),
+	};
+	let sourcevalue = match line.r1 {
+		R::Reg(r) => reg[r as usize],
+		R::Int(i) => i,
+	};
+
+	reg[target] *= sourcevalue;
+	1
+}
+
+fn add(program: &mut [Line], reg: &mut [i32], pc: usize) -> isize {
+	let line = &program[pc];
+	let target = match line.r2 {
+		Some(R::Reg(r)) => r as usize,
+		_ => panic!("invalid fac instruction"),
+	};
+	let sourcevalue = match line.r1 {
+		R::Reg(r) => reg[r as usize],
+		R::Int(i) => i,
+	};
+
+	reg[target] += sourcevalue;
+	1
+}
+
+fn fac(program: &mut [Line], reg: &mut [i32], pc: usize) -> isize {
+	let line = &program[pc];
+	let target = match line.r2 {
+		Some(R::Reg(r)) => r as usize,
+		_ => panic!("invalid fac instruction"),
+	};
+	let sourcevalue = match line.r1 {
+		R::Reg(r) => reg[r as usize],
+		R::Int(i) => i,
+	};
+
+	reg[target] = factorize(sourcevalue);
+	1
+}
+
+fn jnz(program: &mut [Line], reg: &mut [i32], pc: usize) -> isize {
+	let line = &program[pc];
+	let distance = match line.r2 {
+		Some(R::Int(i)) => i as isize,
+		Some(R::Reg(r)) => reg[r as usize] as isize,
+		None => panic!("invalid jump instruction"),
+	};
+	let sourcevalue = match line.r1 {
+		R::Reg(r) => reg[r as usize],
+		R::Int(i) => i,
+	};
+
+	if sourcevalue != 0 {
+		distance
+	} else {
+		1
+	}
+}
+
+fn cpy(program: &mut [Line], reg: &mut [i32], pc: usize) -> isize {
+	let line = &program[pc];
+	let target = if let Some(R::Reg(r)) = line.r2 {
+		r as usize
+	} else {
+		return 1;
+	};
+	let sourcevalue = match line.r1 {
+		R::Reg(r) => reg[r as usize],
+		R::Int(i) => i,
+	};
+	reg[target] = sourcevalue;
+	1
+}
+
+fn dec(program: &mut [Line], reg: &mut [i32], pc: usize) -> isize {
+	let line = &program[pc];
+	let register = if let R::Reg(r) = line.r1 { r } else { return 1 };
+	reg[register as usize] -= 1;
+	1
+}
+
+fn inc(program: &mut [Line], reg: &mut [i32], pc: usize) -> isize {
+	let line = &program[pc];
+	let register = if let R::Reg(r) = line.r1 { r } else { return 1 };
+	reg[register as usize] += 1;
+	1
+}
+
+fn tgl(program: &mut [Line], reg: &mut [i32], pc: usize) -> isize {
+	let line = &program[pc];
+	let register = if let R::Reg(r) = line.r1 {
+		r
+	} else {
+		panic!("invalid tgl");
+	};
+	let target = pc as isize + reg[register as usize] as isize;
+
+	if target >= 0 && (target as usize) < program.len() {
+		program[target as usize].op = match program[target as usize].op {
+			Op::Cpy => Op::Jnz,
+			Op::Jnz => Op::Cpy,
+			Op::Dec => Op::Inc,
+			Op::Inc => Op::Dec,
+			Op::Tgl => Op::Inc,
+			Op::Mul => Op::Jnz,
+			Op::Add => Op::Jnz,
+			Op::Fac => Op::Jnz,
+		};
+	}
+	1
+}
