@@ -5,9 +5,10 @@ edition = "2018"
 
 [[bin]]
 name = "2016"
-path = "2019/2.rs"
+path = "2019/7.rs"
 
 [dependencies]
 regex = "1"
 lazy_static = "*"
 termion = { git = "https://gitlab.redox-os.org/Jezza/termion", branch = "windows-support" }
+permutohedron = "*"
