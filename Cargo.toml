@@ -1,11 +1,10 @@
 [package]
-name = "aoc2016"
+name = "aoc"
 version = "1.0.0"
-edition = "2018"
 
 [[bin]]
-name = "2016"
-path = "2018/4.rs"
+name = "aoc"
+path = "2019/10.rs"
 
 [dependencies]
 regex = "1"
