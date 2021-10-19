@@ -1,5 +1,6 @@
+use std::f64::consts::PI;
 use std::fmt;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 type Coord = (isize,isize);
 
@@ -17,6 +18,14 @@ struct Row {
 struct Quad {
 	is_asteroid: bool,
 	score: u16
+}
+
+#[derive(Copy,Clone)]
+struct AsteroidInfo {
+	absolute_coord: Coord,
+	relative_coord: Coord,
+	angle: i32,
+	magnitude: i32,
 }
 
 impl Map{
@@ -167,12 +176,12 @@ fn mark_steps(map:&mut Marks,mut x:isize,mut y:isize,dx:isize,dy:isize){
 	}
 }
 // hardcoded primes means the reduce function is only defined for distances < 2500
-const primes : &[isize] = &[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
+const PRIMES : &[isize] = &[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
 fn reduce(dx:isize,dy:isize) -> (isize,isize) {
-	if (dx == 0 && dy == 0) {
+	if dx == 0 && dy == 0 {
 		panic!("invalid step distance");
 	}
-	for prime in primes {
+	for prime in PRIMES {
 		if dx % prime == 0 && dy % prime == 0 {
 			return reduce(dx/prime,dy/prime)
 		}
@@ -183,7 +192,7 @@ fn reduce(dx:isize,dy:isize) -> (isize,isize) {
 
 #[cfg(test)]
 mod tests {
-	use fmt::write;
+	use std::f64::consts::PI;
 
     use super::*;
 
@@ -343,6 +352,21 @@ r".##
 assert!(!f.rows[0].quads[0].is_asteroid);
 assert!(f.rows[0].quads[1].is_asteroid);
 	}
+	#[test]
+	fn test_getcoord() {
+		let f = Map::new(
+r".#..#
+.....
+#####
+....#
+...##");
+		let c = get_coords(&f);
+		assert_eq!(c[0].0,1isize);
+		assert_eq!(c[0].1,0isize);
+
+		assert_eq!(c[6].0,4isize);
+		assert_eq!(c[6].1,2isize);
+	}
 
 	#[test]
 	fn test_stat() {
@@ -451,6 +475,114 @@ assert!(f.rows[0].quads[1].is_asteroid);
 		let winner = get_best(&a);
 		assert_eq!((11,13,210),winner);
 	}
+
+	#[test]
+	fn test_transpose() {
+		let v = vec![(0isize,0isize),(6,0),(6,3),(3,6),(3,4),(0,3)];
+		let v = transpose_coords(v, &(3isize,3isize));
+		assert_eq!(v[0].relative_coord.0,-3isize);
+		assert_eq!(v[0].relative_coord.1,-3isize);
+
+		assert_eq!(v[1].relative_coord.0,3isize);
+		assert_eq!(v[1].relative_coord.1,-3isize);
+		assert_eq!(v[4].relative_coord.0,0isize);
+		assert_eq!(v[4].relative_coord.1,1isize);
+	}
+
+	//  0123456 -> x
+	// 0a     b
+	// 1
+	// 2
+	// 3f  x  c
+	// 4   e
+    // 5
+	// 6   d
+	// |
+	// V
+	// y
+
+	// a 315
+	// b 45
+	// c 90
+	// d 180
+	// e 180
+	// f 270
+
+	fn r(n:i16) -> f64 {
+		((n as f64) / 360f64) * 2f64 * PI
+	}
+
+	macro_rules! assert_feq (
+		( $x:expr, $y:expr) => (
+				assert!(
+					f64::abs(
+						$x
+						-
+						$y
+					)
+					<
+					0.00001f64
+				)
+			)
+	);
+
+	macro_rules! assert_ieq (
+		( $x:expr, $y:expr) => (
+			assert_eq!(
+					$x as i32
+					,
+					$y as i32
+				)
+			)
+	);
+	#[test]
+
+	fn test_to_polar() {
+		assert_feq!(to_polar(&(1,0)).1, r(0));
+		assert_feq!(to_polar(&(1,1)).1, r(45));
+		assert_feq!(to_polar(&(0,1)).1, r(90));
+		assert_feq!(to_polar(&(-1,1)).1, r(135));
+		assert_feq!(to_polar(&(-1,0)).1, r(180));
+		assert_feq!(to_polar(&(-1,-1)).1, r(225));
+		assert_feq!(to_polar(&(0,-1)).1, r(270));
+		assert_feq!(to_polar(&(1,-1)).1, r(315));
+	}
+	#[test]
+
+	fn test_angle() {
+		let v = vec![(0isize,0isize),(6,0),(6,3),(3,6),(3,4),(0,3)];
+		let v = transpose_coords(v, &(3isize,3isize));
+		assert_ieq!(v[0].angle, r(315)*100_000_000.0);
+		assert_ieq!(v[1].angle, r(45)* 100_000_000.0);
+		assert_ieq!(v[2].angle, r(90)* 100_000_000.0);
+		assert_ieq!(v[3].angle, r(180)*100_000_000.0);
+		assert_ieq!(v[4].angle, r(180)*100_000_000.0);
+		assert_ieq!(v[5].angle, r(270)*100_000_000.0);
+	}
+	#[test]
+	fn test_magnitude() {
+		let v = vec![(3isize,0isize),(1,3),(6,3),(3,6),(3,4),(0,3)];
+		let v = transpose_coords(v, &(3isize,3isize));
+		assert_eq!(v[0].magnitude, 3*100_000_000);
+		assert_eq!(v[1].magnitude, 2*100_000_000);
+		assert_eq!(v[2].magnitude, 3*100_000_000);
+		assert_eq!(v[3].magnitude, 3*100_000_000);
+		assert_eq!(v[4].magnitude, 1*100_000_000);
+		assert_eq!(v[5].magnitude, 3*100_000_000);
+	}}
+
+fn to_polar(relative: &(isize, isize)) -> (f64,f64) {
+	let x = relative.0 as f64;
+	let y = relative.1 as f64;
+
+	let h = ( x*x+y*y ).sqrt();
+
+	let a= (x / h).acos();
+	if y < 0f64 {
+		(h,PI + (PI-a))
+	} else {
+		(h,a)
+	}
 }
 
 
@@ -468,7 +600,23 @@ fn get_best(map:&Map) -> (isize,isize,u16) {
 	(winner.0,winner.1,max)
 }
 
+fn get_coords(map:&Map)->Vec<Coord>{
+	let mut v = Vec::with_capacity(map.rows.len());
+	for (y,r) in map.rows.iter().enumerate() {
+		for (x,_) in r.quads.iter().enumerate().filter(|q| q.1.is_asteroid ) {
+			v.push((x as isize,y as isize));
+		}
+	}
+	v
+}
 
+fn transpose_coords( coords:Vec<Coord>,base:&Coord) -> Vec<AsteroidInfo> {
+	let mut v = Vec::with_capacity(coords.len());
+	for c in coords{
+		v.push(AsteroidInfo::new(c,base));
+	}
+	v
+}
 fn main() {
 	let s = std::fs::read_to_string("2019/10.txt").unwrap();
 
@@ -478,4 +626,48 @@ fn main() {
 
 
 	println!("row,col,score: {},{},{}", winner.0,winner.1,winner.2);
+
+	let coords = get_coords(&a);
+	let infos = transpose_coords(coords,&(winner.0,winner.1));
+	let mut set : HashMap<i32,Vec<AsteroidInfo>> = HashMap::new();
+	for info in infos{
+		let list:&mut Vec<AsteroidInfo> = set.entry(info.angle).or_insert_with(||Vec::new());
+		list.push(info);
+	}
+	for k in set.values_mut(){
+		k.sort_by(|a, b| b.magnitude.cmp(&a.magnitude));
+	}
+	let mut angles : Vec<i32> = set.keys().cloned().collect();
+	angles.sort_by(|a, b| a.cmp(&b));
+
+	let mut hit = 0;
+	while hit < 100 {
+		for angle in angles.iter() {
+			if let Some(v) = set.get_mut(angle) {
+				if let Some(a) = v.pop(){
+					hit += 1;
+					println!("{}: {},{}",hit,a.absolute_coord.0,a.absolute_coord.1);
+					if hit == 200 {
+						println!("x * 100 + y = {}",a.absolute_coord.0*100+a.absolute_coord.1);
+					}
+				}
+			} else {
+				panic!("aaaa");
+			}
+		}
+	}
+
+
+}
+impl AsteroidInfo {
+	fn new(absolute: Coord, base: &Coord) -> AsteroidInfo {
+		let relative = (absolute.0-base.0,absolute.1-base.1);
+		let ( magnitude,angle) = to_polar(&(relative.1*-1,relative.0));
+		AsteroidInfo{
+			absolute_coord: absolute,
+			relative_coord: relative,
+			angle:(angle*100_000_000.0) as i32,
+			magnitude:(magnitude*100_000_000.0) as i32
+		}
+	}
 }
