@@ -1,6 +1,6 @@
 use regex::Regex;
 use std::{collections::HashMap, fs, time::SystemTime};
-
+use primal::Sieve;
 #[cfg(test)]
 mod tests {
 
@@ -109,14 +109,32 @@ mod tests {
 
 		assert_eq!(1940, energy)
     }
-	#[test]
-	fn test_eq() {
-        let moons = test_moons2();
-        let moons2 = test_moons2();
-		assert_eq!( moons[0], moons2[0] );
-		assert_ne!( moons[0], moons[2] );
 
-	}
+    #[test]
+    fn test_getp_1d(){
+
+        let moons = test_moons();
+        let periods : Vec<u128> = vec![1i8,2,3]
+            .into_iter()
+            .map(|dim| get_period(&moons, dim))
+            .map(|u| u as u128)
+            .collect();
+        assert_eq!(18,periods[0]);
+        assert_eq!(28,periods[1]);
+        assert_eq!(44,periods[2]);
+    }
+
+    #[test]
+    fn test_getp_1d_factorize(){
+
+        let moons = test_moons2();
+        let periods : Vec<u64> = vec![1i8,2,3]
+            .into_iter()
+            .map(|dim| get_period(&moons, dim))
+            .collect();
+
+        assert_eq!(4686774924u128,factorize(&periods));
+    }
 
     fn test_moons() -> Vec<Moon> {
         vec![
@@ -133,6 +151,42 @@ mod tests {
             Moon::new(MoonLabel::Callisto, 2, -7, 3),
             Moon::new(MoonLabel::Europa, 9, -8, -3),
         ]
+    }
+}
+
+fn factorize(periods: &[u64]) -> u128 {
+
+    let sieve = Sieve::new(100000);
+
+    let result : Vec<(usize,usize)> = periods.iter()
+        .map(|p| sieve.factor(*p as usize).unwrap())
+        .flatten()
+        .collect();
+
+    let mut factorcounts = HashMap::new();
+    for (fac,n) in result {
+        let mut candidate = factorcounts.entry(fac).or_default();
+        *candidate = n.max(*candidate);
+    }
+
+    let finaln = factorcounts.drain()
+        .map(|(a,b)| a.pow(b as u32))
+        .reduce(|a,b| a*b)
+        .unwrap();
+    finaln as u128
+    }
+
+fn simulate_step1d(moons: &mut [Moon1D]) {
+    for pivot in 1..moons.len() {
+        let (head, tail) = moons.split_at_mut(pivot);
+        let last = head.last_mut().unwrap();
+        for m in tail {
+            last.apply_grav(m);
+        }
+    }
+
+    for moon in moons.iter_mut() {
+        moon.move_step();
     }
 }
 
@@ -158,11 +212,41 @@ enum MoonLabel {
 
 type Vec3 = (i32, i32, i32);
 
+
+#[derive(PartialEq, Eq)]
+struct Moon1D {
+    pos: i32,
+    vel: i32,
+}
+
+impl Moon1D {
+    fn new( x: i32) -> Moon1D {
+        Moon1D {
+            pos: x,
+            vel: 0,
+        }
+    }
+    fn move_step(&mut self) {
+        self.pos += self.vel;
+    }
+    fn apply_grav(&mut self, other: &mut Moon1D) {
+        if self.pos > other.pos {
+            self.vel -= 1;
+            other.vel += 1;
+        } else if self.pos < other.pos {
+            self.vel += 1;
+            other.vel -= 1;
+        }
+    }
+}
+
 #[derive(PartialEq, Eq)]
 struct Moon {
     pos: Vec3,
     vel: Vec3,
 }
+
+
 
 impl Moon {
     fn new(name: MoonLabel, x: i32, y: i32, z: i32) -> Moon {
@@ -180,6 +264,15 @@ impl Moon {
     fn total_energy(&self) -> i32 {
         self.potential() * self.kinetic()
     }
+    fn get_1d(&self,d:i8) -> Moon1D {
+        match d {
+            1 => Moon1D::new(self.pos.0),
+            2 => Moon1D::new(self.pos.1),
+            3 => Moon1D::new(self.pos.2),
+            _ => panic!("invalid dimonsion"),
+        }
+    }
+
     fn move_step(&mut self) {
         self.pos.0 += self.vel.0;
         self.pos.1 += self.vel.1;
@@ -218,6 +311,13 @@ fn get_moons() -> Vec<Moon> {
     ]
 }
 
+fn equals1d(m1:&[Moon1D], m2:&[Moon1D]) -> bool {
+	return m1[0] == m2[0] &&
+	m1[1] == m2[1] &&
+	m1[2] == m2[2] &&
+	m1[3] == m2[3]
+}
+
 fn equals(m1:&[Moon], m2:&[Moon]) -> bool {
 	return m1[0] == m2[0] &&
 	m1[1] == m2[1] &&
@@ -225,33 +325,41 @@ fn equals(m1:&[Moon], m2:&[Moon]) -> bool {
 	m1[3] == m2[3]
 }
 
+fn get_period( fullmoons: &[Moon], dim:i8) -> u64 {
+    let initstate: Vec<Moon1D> = fullmoons.iter().map(|m| m.get_1d(dim)).collect();
+    let mut moons: Vec<Moon1D> = fullmoons.iter().map(|m| m.get_1d(dim)).collect();
+    simulate_step1d(&mut moons);
+
+	for n in 1.. {
+		if equals1d( &initstate, &moons ) {
+			return n;
+		}
+        simulate_step1d(&mut moons);
+	}
+    return 0;
+}
+
 fn main() {
 
 	let now = SystemTime::now();
     let mut moons = get_moons();
-    let moons2 = get_moons();
-let mut testout = Vec::with_capacity(2000);
-    for n in 0..100000 {
+    for n in 0..1000 {
         simulate_step(&mut moons);
-		testout.push( moons[0].pos.0);
     }
-	let testdataout:Vec<String> = testout.iter().map(|o| o.to_string()).collect();
-
-	fs::write("./foo.txt", testdataout.join("\n")).expect("Unable to write file");
-
     let energy: i32 = moons.iter().map(|m| m.total_energy()).sum();
     println!("after 1000: {}", energy);
 
-	for n in 0..100_000_000u64 {
-		if equals( &moons, &moons2 ) {
-			println!("steps: {}", 1000+n);
-			break;
-		}
-        simulate_step(&mut moons);
-	}
+    let moons = get_moons();
+    let periods : Vec<u64> = vec![1i8,2,3]
+        .into_iter()
+        .map(|dim| get_period(&moons, dim))
+        .collect();
+
+    println!("periods: {:?}",periods);
+    let fact = factorize(&periods);
+    println!("total: {}",fact);
 	if let Ok(t) = now.elapsed() {
 		println!("took {}", t.as_millis());
 	}
 
-	// 6058 low
 }
