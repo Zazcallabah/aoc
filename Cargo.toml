@@ -4,12 +4,12 @@ version = "1.0.0"
 
 [[bin]]
 name = "aoc"
-path = "2019/13.rs"
+path = "2019/14.rs"
 edition = "2021"
 
 [dependencies]
-primal = "*"
+#primal = "*"
 regex = "1"
-lazy_static = "*"
-termion = { git = "https://gitlab.redox-os.org/Jezza/termion", branch = "windows-support" }
-permutohedron = "*"
+#lazy_static = "*"
+#termion = { git = "https://gitlab.redox-os.org/Jezza/termion", branch = "windows-support" }
+#permutohedron = "*"
