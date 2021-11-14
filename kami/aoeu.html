@@ -1,0 +1,54 @@
+<html>
+	<head>
+	</head>
+	<body>
+		<script>
+var image = new Image();
+image.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAKCAYAAAC9vt6cAAAAgUlEQVQokY2RwQ3AMAgDb5ruPw7buI+ExFh9tJLVJGBjAB5JsFALPLqf39nnfgPxS6DjKdICR6SigrSTrKLFATGSW6yM1FXdpYnido+qV61LdBH63705MVtJ++1Kkvgi+zC9rWvV4tn7wbabc/FWlkCuDyMzSWNbYwYBAmPFlqNCL+vHaqRhtdFZAAAAAElFTkSuQmCC"
+
+
+	var canvas = document.createElement('canvas');
+	var context = canvas.getContext('2d');
+	canvas.width = image.naturalWidth;
+	canvas.height = image.naturalHeight;
+	context.drawImage(image, 0, 0);
+
+	var pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+
+	var str = "";
+
+	for (var i = 0; i < canvas.width * canvas.height; i++) {
+		var r = pixels.data[(i * 4)] > 100;
+		var g = pixels.data[(i * 4) + 1] > 100;
+		var b = pixels.data[(i * 4) + 2] > 100;
+
+		if( !r && !g && b){
+			str+="b";
+		}
+		else if( !r && g && !b){
+			str+="g";
+		}
+		else if( r && !g && !b){
+			str+="r";
+		}
+		else if( r && g && b){
+			str+="w";
+		}
+		else if( !r && !g && !b){
+			str+="x";
+		}
+		else if( r && g && !b){
+			str+="y";
+		}
+		else {
+			console.log("aoeu");
+		}
+
+
+	}
+	console.log(str)
+
+</script>
+</body>
+
+// 255,0,0 255,0,0 255,216,0 255,216,0  255,255,255 255,255,255 255,216,0  255,255,255 255,0,0  255,216,0  255,0,0  255,0,0 255,0,0 255,216,0 255,216,0  255,255,255 255,255,255 255,216,0 0,0,0 255,0,0 255,255,255 255,0,0  255,216,0 0,0,0   255,0,0 255,216,0  255,216,0  255,255,255 0,0,0 0,0,0  255,0,0  255,216,0  0,0,0 255,216,0  255,255,255   255,216,0 0,0,0  255,255,255 255,0,0 0,0,0 255,0,0 255,216,0 255,0,0 0,0,0   255,255,255 255,255,255  0,0,0 0,0,0 0,0,0  255,216,0 255,0,0 255,216,0 0,0,0 255,0,0 255,216,0 0,0,0 255,216,0 255,0,0 255,255,255 0,0,0 0,0,0 0,0,0 255,216,0  255,216,0   255,0,0  255,216,0 255,255,255 255,0,0 255,255,255 255,255,255 0,0,0 0,0,0 0,0,0 255,216,0 255,216,0 255,216,0    255,216,0 255,255,255 255,255,255 255,0,0 255,216,0  255,255,255   255,216,0 255,216,0 255,216,0 255,0,0 255,0,0   255,216,0 0,0,0 255,216,0 0,0,0 255,0,0  255,0,0 255,216,0 255,216,0  255,0,0 255,0,0 255,0,0 0,0,0 0,0,0 255,216,0 0,0,0  255,0,0 255,216,0 0,0,0 255,216,0 255,0,0 255,0,0 255,0,0 255,0,0 255,0,0 0,0,0 0,0,0 0,0,0 0,0,0 255,0,0 255,216,0  255,0,0 255,0,0 0,0,0 255,216,0
