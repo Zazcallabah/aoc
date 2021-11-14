@@ -1,154 +1,179 @@
 use std::collections::HashMap;
+use std::io::Stdout;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::sync::mpsc;
+use std::time::Duration;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
+use termion::raw::RawTerminal;
+use std::io::{Write, stdout, stdin};
 
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_mempointer(){
-		let mut p = Prg::new("204,-7");
-		p.relative_base = 50;
-		let r = p.get_mempointer(204, 1);
-		assert_eq!(43,r);
+fn as_char(output:i64)->char{
+	match output {
+		0 => ' ',
+		1 => '#',
+		2 => '.',
+		3 => '"',
+		4 => 'o',
+		_ => panic!("bad output from intcode"),
 	}
-
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-enum Direction { N, E, S, W }
-type Coord = (isize,isize);
-struct Robot {
-	dir: Direction,
-	pos: Coord
-}
-impl Robot {
-	fn new() -> Robot {
-		Robot { dir: Direction::N, pos: (0,0) }
-	}
-	fn go(&mut self, turn_right: bool) {
-		match self.dir {
-			 Direction::N => if turn_right {
-				self.dir = Direction::E
-			} else {
-				self.dir = Direction::W
-			},
-			Direction::E => if turn_right {
-				self.dir = Direction::S
-			} else {
-				self.dir = Direction::N
-			},
-			Direction::S => if turn_right {
-				self.dir = Direction::W
-			} else {
-				self.dir = Direction::E
-			},
-			Direction::W => if turn_right {
-				self.dir = Direction::N
-			} else {
-				self.dir = Direction::S
-			}
-		}
-		match self.dir {
-			Direction::N => self.pos.1 += 1,
-			Direction::E => self.pos.0 += 1,
-			Direction::S => self.pos.1 -= 1,
-			Direction::W => self.pos.0 -= 1,
-		}
-	}
-}
-struct Grid {
-	quads: HashMap<Coord,i64>
-}
-impl Grid {
-	fn new() -> Grid {
-		Grid{quads:HashMap::new()}
-	}
-	fn paint(&mut self, pos:Coord, color:i64){
-		self.quads.insert(pos, color);
-	}
-}
 fn main() {
-
-	let mut p = Prg::new(&std::fs::read_to_string("2019/11.txt").unwrap());
-	let (input_tx, input_rx) = mpsc::channel();
+	let mut p = Prg::new(&std::fs::read_to_string("2019/13.txt").unwrap());
+	let (_, input_rx) = mpsc::channel();
 	let (output_tx, output_rx) = mpsc::channel();
 	let handle = thread::spawn(move || {
 		p.run(input_rx,output_tx,false);
 	});
 
-
-	let mut robot = Robot::new();
-	let mut grid = Grid::new();
-	grid.paint(robot.pos,1);
-	let mut time = 0u64;
-	loop{
-		time += 1;
-		let startcolor = grid.quads.entry(robot.pos).or_default();
-		if let Err(e) = input_tx.send( startcolor.clone() ){
-			panic!("write");
-		}
-		if let Ok(color) = output_rx.recv() {
-			grid.paint(robot.pos,color);
-
-			if let Ok( direction ) = output_rx.recv() {
-				robot.go( direction == 1 );
-			}
-			else {
-				panic!("direction");
+	let mut tileset:HashMap<i64,i32> = HashMap::new();
+	loop {
+		if let Ok(x) = output_rx.recv_timeout(Duration::from_millis(100)) {
+			if let Ok(y) = output_rx.recv() {
+				if let Ok(o) = output_rx.recv() {
+					let counter = tileset.entry(o).or_default();
+					*counter += 1;
+				}
 			}
 		}
 		else {
 			break;
 		}
 	}
-	println!("{}",time);
-	let mut minx = isize::MAX;
-	let mut maxx = isize::MIN;
-	let mut miny = isize::MAX;
-	let mut maxy = isize::MIN;
-	grid.quads.keys().for_each(|pos| {
-		minx = isize::min(minx,pos.0);
-		maxx = isize::max(maxx,pos.0);
-		miny = isize::min(miny,pos.1);
-		maxy = isize::max(maxy,pos.1);
+	if let Err(_) = handle.join() {
+		panic!("couldnt join");
+	}
+	for (a,b) in tileset {
+		println!("{}: {}",as_char(a),b);
+	//  _: 1
+	//   : 442
+	//  #: 76
+	//  .: 236   // assuming linear score, but incorrect. different layers are probably worth different scores
+	//  o: 1
+	// guessed 15340
+
+	}
+
+	let mut p = Prg::new(&std::fs::read_to_string("2019/13.txt").unwrap());
+	p.data.write(0,2);
+	let (input_tx, input_rx) = mpsc::channel();
+	let (output_tx, output_rx) = mpsc::channel();
+	let handle = thread::spawn(move || {
+		p.run(input_rx,output_tx,false);
 	});
-	println!("{} {} {} {}",minx,maxx,miny,maxy);
-	let deltax = (maxx - minx)+1;
-	let deltay = (maxy - miny)+1;
-	println!("dx {}, dy {}",deltax,deltay);
-
-	let mut strmaker = vec!['.';(deltax*deltay) as usize];
-
-	grid.quads.keys().for_each(|pos| {
-//		println!("p {} {}, m {} {}",pos.0,pos.1,minx,miny);
-		let ix_x = pos.0 - minx;
-		let ix_y = pos.1 - miny;
-
-		let ix = deltax * ix_y + ix_x;
-		strmaker[ix as usize] = if grid.quads[&(pos.0,pos.1)] == 1 { 'X' } else { ' ' };
-	});
-
-	for chunk in strmaker.chunks(deltax as usize).rev() {
-		let s : String = chunk.into_iter().collect();
-		println!("{}",s);
+	let mut keys = stdin().keys();
+	let mut stdout = stdout().into_raw_mode().unwrap();
+	write!(stdout,"{}",termion::clear::All).unwrap();
+	let mut paddle_x = -1;
+	let mut ball = (0,0);
+	let mut ball_dir = (true,true);
+	let mut score = 0;
+	loop{
+		if let Ok(x) = output_rx.recv_timeout(Duration::from_millis(100)) {
+			if let Ok( y ) = output_rx.recv() {
+				if let Ok( t ) = output_rx.recv() {
+					if x != -1 && t == 4 {
+						if x != ball.0 {
+							ball_dir = (x > ball.0,ball_dir.1);
+						}
+						if y != ball.1 {
+							ball_dir = (ball_dir.0,y > ball.1);
+						}
+						ball = (x,y);
+						write!(stdout,"{}ball x {} y {}",termion::cursor::Goto(2,26),x,y).unwrap();
+						write!(stdout,"{}ball _ {} _ {}",
+							termion::cursor::Goto(2,27),
+							if ball_dir.0 {'0'}else{'1'},
+							if ball_dir.1 {'0'}else{'1'}
+						).unwrap();
+					} else if t == 3 {
+						paddle_x = x;
+						write!(stdout,"{}pad {}",termion::cursor::Goto(2,24),x).unwrap();
+					}
+					if x==-1 && y==0 {
+						score = t;
+						if score > 0 {
+							write!(stdout,"{}score: {} ",termion::cursor::Goto(15,2),t).unwrap();
+						}
+					}
+					else {
+						let c = as_char(t);
+						write!(stdout,"{}{}",termion::cursor::Goto((x+2) as u16,(y +2)as u16),c).unwrap();
+					}
+				}
+				else {
+					panic!("failed to read t");
+				}
+			}
+			else {
+				panic!("failed to read y");
+			}
+		}
+		else {
+			write!(stdout,"{}",termion::cursor::Goto(1,1)).unwrap();
+			stdout.flush().unwrap();
+			let wait = if score == 0 {
+				500
+			} else if score < 100 {
+				300
+			} else if score < 200 {
+				100
+			} else {
+				1
+			};
+			std::thread::sleep(std::time::Duration::from_millis(wait));
+			let data = decision(ball,ball_dir,paddle_x,&mut stdout);
+			match input_tx.send(data) {
+				Ok(_) => {},
+				Err(_) => break,
+			}
+		}
 	}
 
 
-//	let drawing = Vec::with_capacity(20);
-//	println!("tiles visited: {}",grid.quads.len());
+}
 
+fn decision(ball:(i64,i64),dball:(bool,bool),paddle:i64,stdout:&mut RawTerminal<Stdout>) -> i64 {
+	if ball.1 > 14 && dball.1 {
+		let delta_y = 18 - ball.1;
+		let absolute_x_ball = ball.0 + if dball.0 { delta_y } else { -1 * delta_y };
+		let expected_x_ball =
+			if absolute_x_ball < 0 {
+				(absolute_x_ball * -1) +1 // accounting for the wall
+			} else if absolute_x_ball > 34 {
+				32 + ( absolute_x_ball - 34 )
+			} else { absolute_x_ball };
+		write!(stdout,
+			"{}                                           {}{} {}",
+			termion::cursor::Goto(0,23),
+			termion::cursor::Goto((expected_x_ball+1) as u16,23),
+			'x',
+			expected_x_ball
+		).unwrap();
+		if paddle == expected_x_ball {
+			0
+		}
+		else if paddle > expected_x_ball {
+			-1
+		} else {
+			1
+		}
+	} else if paddle == ball.0 {
+		if dball.0 { 1 } else { -1 }
+	} else if paddle > ball.0 {
+		-1
+	} else {
+		1
+	}
 }
 
 struct MemBank {
 	prg: Vec<i64>,
 	data:HashMap<usize,Vec<i64>>,
 }
-//input: VecDeque<i64>,
-//output: VecDeque<i64>,
 
 struct Prg {
 	data: MemBank,
