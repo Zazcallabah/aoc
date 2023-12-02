@@ -4,7 +4,7 @@ version = "1.0.0"
 
 [[bin]]
 name = "aoc"
-path = "2019/14.rs"
+path = "2023/1.rs"
 edition = "2021"
 
 [dependencies]
