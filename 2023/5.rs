@@ -52,6 +52,7 @@ struct MapLine {
 }
 impl MapLine {
     fn new(destination_range_start: u64, source_range_start: u64, range_length: u32) -> MapLine {
+        assert_ne!(0, range_length);
         MapLine {
             destination_range_start,
             source_range_start,
@@ -130,7 +131,7 @@ impl Map {
     }
 
     fn new(data: &str) -> Map {
-        //        println!("{}", data.lines().next().unwrap());
+        //println!("{}", data.lines().next().unwrap());
         let mut entries: Vec<MapLine> = data
             .lines()
             .skip(1)
@@ -151,18 +152,18 @@ impl Map {
                 let tmp = MapLine::new(
                     current_start,
                     current_start,
-                    (entry.source_range_start) as u32,
+                    (entry.source_range_start - current_start) as u32,
                 );
-                //            println!("{:?}", tmp);
+                // println!("{:?}", tmp);
                 extra.push(tmp);
             }
             current_start = entry.source_range_start + entry.range_length as u64;
-            //      println!("{:?}", entry);
+            // println!("{:?}", entry);
         }
         let last = &entries.last().unwrap();
         let from = last.source_range_start + last.range_length as u64;
         extra.push(MapLine::new(from, from, u32::MAX));
-        //    println!("{:?}", extra.last().unwrap());
+        //println!("{:?}", extra.last().unwrap());
 
         let rl = entries.len();
         entries.splice((rl)..(rl), extra.into_iter());
@@ -203,6 +204,45 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    static TEST_MAP_5: &str = r"temperature-to-humidity map:
+603287260 3766826980 8741130
+572607531 3684982838 30679729
+2084038135 1101548002 100083930
+655933651 3228345771 56278566
+1881393627 553997241 168332584
+553997241 2882185871 18610290
+627184746 1072799097 28748905
+612028390 3397056204 15156356
+1693489030 1430646491 187904597
+3039118107 1734352525 2023479
+220345266 0 43042720
+840454312 3775568110 147781659
+2184122065 3715662567 51164413
+317040325 171240045 2422893
+3245373536 4158663426 136303870
+145773749 385599932 74571517
+0 43042720 128197325
+1490020808 4094893831 63769595
+319463218 173662938 140708231
+712212217 1821839294 128242095
+128197325 314371169 17576424
+2474405575 3923349769 171544062
+2352890439 3105028111 121515136
+3467140696 3318936261 78119943
+2235286478 3226543247 1802524
+4084196651 722329825 210770645
+1553790403 933100470 139698627
+1261006249 1201631932 229014559
+263387986 331947593 53652339
+3137034338 2900796161 108339198
+988235971 3412212560 272770278
+2237089002 1618551088 115801437
+3381677406 1736376004 85463290
+3545260639 1950081389 538936012
+2049726211 3284624337 34311924
+2645949637 2489017401 393168470
+3041141586 3009135359 95892752
+";
     static TEST_DATA: &str = r"seeds: 79 14 55 13
 
 seed-to-soil map:
@@ -236,6 +276,24 @@ temperature-to-humidity map:
 humidity-to-location map:
 60 56 37
 56 93 4";
+    #[test]
+    fn test_map5_specific_bug() {
+        let map = Map::new(TEST_MAP_5);
+        let input = Range {
+            from: 591334932,
+            length: 39036495,
+        };
+        let mut result = Vec::new();
+        for entry in map.entries.iter() {
+            if entry.in_partial_range(&input) {
+                let r = entry.transform(&input);
+                result.push(r);
+            }
+        }
+
+        assert_eq!(1, result.len())
+    }
+
     #[test]
     fn test_finder() {
         let a = Almanac::new(TEST_DATA);
@@ -370,6 +428,56 @@ humidity-to-location map:
         assert_eq!(false, mapline.in_partial_range(&Range::new(77, 1)));
     }
 
+    #[test]
+    fn test_mapline_transform_length_1() {
+        let mapline = MapLine {
+            destination_range_start: 50,
+            source_range_start: 98,
+            range_length: 3,
+        };
+        assert_eq!(Range::new(50, 1), mapline.transform(&Range::new(98, 1)));
+        assert_eq!(Range::new(51, 1), mapline.transform(&Range::new(99, 1)));
+        assert_eq!(Range::new(52, 1), mapline.transform(&Range::new(100, 1)));
+    }
+    #[test]
+    fn test_mapline_transform_length_2() {
+        let mapline = MapLine {
+            destination_range_start: 50,
+            source_range_start: 98,
+            range_length: 3,
+        };
+        assert_eq!(Range::new(50, 1), mapline.transform(&Range::new(97, 2)));
+        assert_eq!(Range::new(50, 2), mapline.transform(&Range::new(98, 2)));
+        assert_eq!(Range::new(51, 2), mapline.transform(&Range::new(99, 2)));
+        assert_eq!(Range::new(52, 1), mapline.transform(&Range::new(100, 2)));
+    }
+    #[test]
+    fn test_mapline_transform_length_3() {
+        let mapline = MapLine {
+            destination_range_start: 50,
+            source_range_start: 98,
+            range_length: 3,
+        };
+        assert_eq!(Range::new(50, 1), mapline.transform(&Range::new(96, 3)));
+        assert_eq!(Range::new(50, 2), mapline.transform(&Range::new(97, 3)));
+        assert_eq!(Range::new(50, 3), mapline.transform(&Range::new(98, 3)));
+        assert_eq!(Range::new(51, 2), mapline.transform(&Range::new(99, 3)));
+        assert_eq!(Range::new(52, 1), mapline.transform(&Range::new(100, 3)));
+    }
+    #[test]
+    fn test_mapline_transform_length_4() {
+        let mapline = MapLine {
+            destination_range_start: 50,
+            source_range_start: 98,
+            range_length: 3,
+        };
+        assert_eq!(Range::new(50, 1), mapline.transform(&Range::new(95, 4)));
+        assert_eq!(Range::new(50, 2), mapline.transform(&Range::new(96, 4)));
+        assert_eq!(Range::new(50, 3), mapline.transform(&Range::new(97, 4)));
+        assert_eq!(Range::new(50, 3), mapline.transform(&Range::new(98, 4)));
+        assert_eq!(Range::new(51, 2), mapline.transform(&Range::new(99, 4)));
+        assert_eq!(Range::new(52, 1), mapline.transform(&Range::new(100, 4)));
+    }
     #[test]
     fn test_mapline_transform() {
         let mapline = MapLine {
