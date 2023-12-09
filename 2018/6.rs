@@ -82,6 +82,17 @@ impl Field {
             limit_top,
         }
     }
+    fn weight(&self, row: isize, coord: isize) -> isize {
+        let mut sum = 0;
+        for (r, map) in &self.rows {
+            for (c, _) in map {
+                let dy = row - r;
+                let dx = coord - c;
+                sum += dx.abs() + dy.abs();
+            }
+        }
+        sum
+    }
     fn len(&self) -> usize {
         let mut sum = 0;
         for r in &self.rows {
@@ -242,19 +253,23 @@ fn count_max(field: &Field) -> u64 {
     // }
     // sum
 }
+
 fn main() {
     let data = std::fs::read_to_string("2018/6.txt").unwrap();
     let mut field = Field::new(&data);
 
     field.step(MarkState::Source);
     field.commit();
+    let mut lastmax = 0;
 
-    for i in 0..450 {
-        let before = field.len();
+    loop {
         field.step(MarkState::Owned);
         field.commit();
-        let after = field.len();
-        println!("{}: {} diff {}", i, after, after - before);
+        let max = count_max(&field);
+        if max == lastmax {
+            break;
+        }
+        lastmax = max;
     }
 
     let printed = field.to_string(0, 0, 1000, 1000);
@@ -267,7 +282,20 @@ fn main() {
     // 97189 is too high
     // 5820 is too high
 
-    //navigate(&field);
+    let data = std::fs::read_to_string("2018/6.txt").unwrap();
+    let field = Field::new(&data);
+    let weightlimit = 10000;
+    let mut counter = 0;
+    for row in 1..500 {
+        for coord in 100..500 {
+            let w = field.weight(row, coord);
+            let inside = w < weightlimit;
+            if inside {
+                counter += 1;
+            }
+        }
+    }
+    println!("inside count: {}", counter);
 }
 
 #[cfg(test)]
@@ -324,5 +352,10 @@ mod tests {
             field.commit();
         }
         assert_eq!(17, count_max(&field))
+    }
+    #[test]
+    fn test_field_weight() {
+        let field = Field::new("1, 1\n1, 6\n8, 3\n3, 4\n5, 5\n8, 9");
+        assert_eq!(30, field.weight(3, 4));
     }
 }
