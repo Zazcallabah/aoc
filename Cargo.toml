@@ -4,7 +4,7 @@ version = "1.0.0"
 
 [[bin]]
 name = "aoc"
-path = "2023/8.rs"
+path = "2023/10.rs"
 edition = "2021"
 
 [dependencies]
@@ -12,4 +12,5 @@ edition = "2021"
 regex = "1"
 lazy_static = "*"
 #termion = { git = "https://gitlab.redox-os.org/Jezza/termion", branch = "windows-support" }
+console = "*"
 #permutohedron = "*"
