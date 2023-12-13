@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use regex::Regex;
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum MapSegment {
@@ -5,7 +7,24 @@ enum MapSegment {
     Damaged,
     Unknown,
 }
-
+struct PossibleMatch {
+    matched: bool,
+    group_count: usize,
+}
+impl PossibleMatch {
+    fn no() -> PossibleMatch {
+        PossibleMatch {
+            matched: false,
+            group_count: 0,
+        }
+    }
+    fn yes(group_count: usize) -> PossibleMatch {
+        PossibleMatch {
+            matched: true,
+            group_count,
+        }
+    }
+}
 struct SegmentVector(Vec<MapSegment>);
 
 impl MapSegment {
@@ -37,6 +56,7 @@ impl std::fmt::Display for SegmentVector {
 struct Map {
     record: Record,
     map: Vec<MapSegment>,
+    id: usize,
 }
 impl Map {
     fn find_next_unknown(bench: &[MapSegment], from: usize) -> Option<usize> {
@@ -51,16 +71,92 @@ impl Map {
         }
         None
     }
-    fn count_matches_inner(&self, bench: &mut [MapSegment], current: usize, depth: usize) -> u32 {
+    fn cached_or_inner(
+        &self,
+        depth_cache: &mut HashMap<(usize, usize, usize), u64>,
+        bench: &mut [MapSegment],
+        next_index: usize,
+        depth: usize,
+        group_count: usize,
+    ) -> u64 {
+        // let slow_ids = [18, 22, 26, 29, 32, 35, 48, 49, 51, 52];
+        // if !slow_ids.contains(&self.id) {
+        //     return self.cached_or_inner_only_verify(
+        //         depth_cache,
+        //         bench,
+        //         next_index,
+        //         depth,
+        //         group_count,
+        //     );
+        // }
+        if let Some(x) = depth_cache.get(&(depth, group_count, next_index)) {
+            return *x;
+            // println!(
+            //     "{} = {} ({},{},{},{})",
+            //     v,
+            //     x,
+            //     depth,
+            //     group_count,
+            //     next_index,
+            //     SegmentVector(bench.to_owned())
+            // );
+            // assert_eq!(v, *x);
+            // return v;
+        }
+        let v = self.count_matches_inner(depth_cache, bench, next_index, depth + 1);
+        depth_cache.insert((depth, group_count, next_index), v);
+        return v;
+    }
+    fn cached_or_inner_only_verify(
+        &self,
+        depth_cache: &mut HashMap<(usize, usize, usize), u64>,
+        bench: &mut [MapSegment],
+        next_index: usize,
+        depth: usize,
+        group_count: usize,
+    ) -> u64 {
+        let v = self.count_matches_inner(depth_cache, bench, next_index, depth + 1);
+
+        if let Some(x) = depth_cache.get(&(depth, group_count, next_index)) {
+            // println!(
+            //     "{} = {} ({},{},{},{})",
+            //     v,
+            //     x,
+            //     depth,
+            //     group_count,
+            //     next_index,
+            //     SegmentVector(bench.to_owned())
+            // );
+            assert_eq!(v, *x);
+
+            return v;
+        }
+        depth_cache.insert((depth, group_count, next_index), v);
+        return v;
+    }
+
+    fn count_matches_inner(
+        &self,
+        depth_cache: &mut HashMap<(usize, usize, usize), u64>,
+        bench: &mut [MapSegment],
+        current: usize,
+        depth: usize,
+    ) -> u64 {
         // current should be pointing to an unknown
         let next_unknown_index = Map::find_next_unknown(&bench, current + 1);
 
-        let mut recursed_sum = 0;
+        let mut recursed_sum = 0u64;
         bench[current] = MapSegment::Damaged;
         let a_branch_can_match = self.can_possibly_match(bench);
-        if a_branch_can_match {
+        if a_branch_can_match.matched {
             if let Some(ix) = next_unknown_index {
-                recursed_sum += self.count_matches_inner(bench, ix, depth + 1);
+                recursed_sum += self.cached_or_inner(
+                    depth_cache,
+                    bench,
+                    ix,
+                    depth + 1,
+                    a_branch_can_match.group_count,
+                );
             } else {
                 //                let as_str = SegmentVector(bench.to_owned());
                 // if !self.record.str_match(&as_str.to_string()) {
@@ -75,9 +171,9 @@ impl Map {
 
         bench[current] = MapSegment::Operational;
         let b_branch_can_match = self.can_possibly_match(bench);
-        if b_branch_can_match {
+        if b_branch_can_match.matched {
             if let Some(ix) = next_unknown_index {
-                recursed_sum += self.count_matches_inner(bench, ix, depth + 1);
+                recursed_sum += self.count_matches_inner(depth_cache, bench, ix, depth + 1);
             } else {
                 let as_str = SegmentVector(bench.to_owned());
                 if !self.record.str_match(&as_str.to_string()) {
@@ -92,9 +188,10 @@ impl Map {
         bench[current] = self.map[current]; // restore
         return recursed_sum;
     }
-    fn count_matches(&self) -> u32 {
+    fn count_matches(&self) -> u64 {
+        let mut cache = HashMap::new();
         if let Some(first_index) = Map::find_next_unknown(&self.map, 0) {
-            return self.count_matches_inner(&mut self.map.clone(), first_index, 1);
+            return self.count_matches_inner(&mut cache, &mut self.map.clone(), first_index, 1);
         } else {
             return 0;
         }
@@ -118,7 +215,7 @@ impl Map {
         //     self.record.entries
         // );
     }
-    fn print_return(&self, map: &[MapSegment], label: &str, ret: bool) -> bool {
+    fn print_return(&self, map: &[MapSegment], label: &str, ret: PossibleMatch) -> PossibleMatch {
         // println!(
         //     "{}-{} {} r{:?}",
         //     if ret { 'o' } else { 'x' },
@@ -128,7 +225,7 @@ impl Map {
         // );
         ret
     }
-    fn can_possibly_match(&self, map: &[MapSegment]) -> bool {
+    fn can_possibly_match(&self, map: &[MapSegment]) -> PossibleMatch {
         let mut marker = 0u8;
         let mut groupsize = 0u8;
         let mut groupnumber = 0usize;
@@ -143,10 +240,10 @@ impl Map {
                         match self.record.entries.get(groupnumber) {
                             Some(record) => {
                                 if *record != groupsize {
-                                    return false;
+                                    return PossibleMatch::no();
                                 }
                             }
-                            None => return false,
+                            None => return PossibleMatch::no(),
                         }
                         currently_counting_damaged_group = false;
                         groupsize = 0;
@@ -157,18 +254,18 @@ impl Map {
                             // counting from where this group started, how much remains of width
                             let remaining_unchecked = map.len() - (marker - groupsize) as usize;
                             if cc > remaining_unchecked as u8 {
-                                return self.print_return(map, "CU", false);
+                                return self.print_return(map, "CU", PossibleMatch::no());
                             }
                         } else {
-                            return self.print_return(map, "CX", false);
+                            return self.print_return(map, "CX", PossibleMatch::no());
                         }
                         if let Some(record) = self.record.entries.get(groupnumber) {
                             if *record < groupsize {
-                                return false;
+                                return PossibleMatch::no();
                             }
-                            return true;
+                            return PossibleMatch::yes(groupnumber);
                         }
-                        return false;
+                        return PossibleMatch::no();
                     }
                 }
             } else {
@@ -176,12 +273,12 @@ impl Map {
                     if let Some(cc) = self.minimum_width(groupnumber as usize) {
                         let remaining_unchecked = map.len() - marker as usize;
                         if cc > remaining_unchecked as u8 {
-                            return self.print_return(map, "EU", false);
+                            return self.print_return(map, "EU", PossibleMatch::no());
                         } else {
-                            return true; //self.print_return(map, "IU", true);
+                            return PossibleMatch::yes(groupnumber); //self.print_return(map, "IU", true);
                         }
                     }
-                    return true;
+                    return PossibleMatch::yes(groupnumber);
                 }
 
                 if *s == MapSegment::Damaged {
@@ -193,22 +290,22 @@ impl Map {
         }
         if currently_counting_damaged_group {
             if self.record.entries.len() != groupnumber as usize + 1 {
-                return self.print_return(map, "NX", false);
+                return self.print_return(map, "NX", PossibleMatch::no());
             }
             match self.record.entries.get(groupnumber as usize) {
                 Some(record) => {
                     if *record != groupsize as u8 {
-                        return false;
+                        return PossibleMatch::no();
                     }
                 }
-                None => return false,
+                None => return PossibleMatch::no(),
             }
         } else {
             if (groupnumber as usize) < self.record.entries.len() {
-                return self.print_return(map, "NY", false);
+                return self.print_return(map, "NY", PossibleMatch::no());
             }
         }
-        return true;
+        return PossibleMatch::yes(groupnumber);
     }
     fn count_unknowns(&self) -> usize {
         self.map
@@ -220,7 +317,7 @@ impl Map {
         let spl: Vec<&str> = data.split(' ').collect();
         let record = Record::new(spl[1]);
         let map: Vec<MapSegment> = MapSegment::to_vec(spl[0]);
-        Map { record, map }
+        Map { record, map, id: 0 }
     }
     fn expand(data: &str, separator: char) -> String {
         let mut out = String::from(data);
@@ -234,7 +331,7 @@ impl Map {
         let spl: Vec<&str> = data.split(' ').collect();
         let record = Record::new(&Map::expand(spl[1], ','));
         let map: Vec<MapSegment> = MapSegment::to_vec(&Map::expand(spl[0], '?'));
-        Map { record, map }
+        Map { record, map, id: 0 }
     }
 }
 struct Record {
@@ -303,13 +400,17 @@ fn main() {
     println!("summed: {}", sum);
     let data = std::fs::read_to_string("2023/12.txt").unwrap();
     let mut sum = 0;
+    let mut id = 0;
     for line in data.lines() {
-        let map = Map::new_expanded(line);
-        println!("{} ({})", line, map.count_unknowns());
+        let mut map = Map::new_expanded(line);
+        map.id = id;
+        println!("{} {} ({})", id, line, map.count_unknowns());
         sum += map.count_matches();
+        id += 1;
     }
     println!("expanded: {}", sum);
     // 351 is too low
+    // 2596401949 is too low
 }
 
 #[cfg(test)]
@@ -357,13 +458,36 @@ mod tests {
         let n = Map::find_next_unknown(&m.map, 0);
         assert_eq!(Some(9), n);
         let mut bench = m.map.clone();
-        let r = m.count_matches_inner(&mut bench, 9, 1);
+
+        let r = m.count_matches_inner(&mut HashMap::new(), &mut bench, 9, 1);
         assert_eq!(0, r)
+    }
+    #[test]
+    fn test_can_verify_cached() {
+        Map::new_expanded("???.### 1,1,3").count_matches();
+        Map::new_expanded("?.?#?#??#?.?#????? 4,2,5").count_matches();
+        Map::new_expanded("?##??.#??#.???.# 4,4,2,1").count_matches();
+        Map::new_expanded("#?#?.##???.?.? 4,2,1,1").count_matches();
+        Map::new_expanded("...?#??#?#????#.. 10,1").count_matches();
+        Map::new_expanded("?????#?#.??????????? 1,6,1,1,1,4").count_matches();
+        Map::new_expanded("???????##???#???#??? 10,1,5").count_matches();
+        Map::new_expanded(".?#??????.#.?#? 7,1,3").count_matches();
+        Map::new_expanded("..#..??#???#???#?#?# 1,1,11,1").count_matches();
+        Map::new_expanded(".??##?.??#?#?#?..? 5,7").count_matches();
+        Map::new_expanded("?#???#?#??#???##?.? 2,9,4").count_matches();
+        Map::new_expanded(".?#.?#?###????#???? 1,11,1").count_matches();
+        Map::new_expanded("?..?#.??##??#??.? 2,9").count_matches();
+        Map::new_expanded("??##.?#?????? 4,5,1").count_matches();
+        Map::new_expanded("?.???#??#?#?#? 9,1").count_matches();
+        Map::new_expanded("#??#.?????####. 4,9").count_matches();
+        Map::new_expanded("???#????#?.??#? 9,2").count_matches();
+        Map::new_expanded("#????.??#????? 1,1,1,7").count_matches();
+        Map::new_expanded("?#??.##?###?##?. 3,6,2").count_matches();
     }
     #[test]
     fn test_can_find_specific() {
         let map = Map::new(&".###.##....? 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
     }
     //    #[test]
     fn test_can_run_on_expanded() {
@@ -402,25 +526,25 @@ mod tests {
     #[test]
     fn test_can_line_match_exact() {
         let map = Map::new(&".###.##.#... 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
         let map = Map::new(&".###.##..#.. 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
         let map = Map::new(&".###.##...#. 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
         let map = Map::new(&".###.##....# 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
         let map = Map::new(&".###..##.#.. 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
         let map = Map::new(&".###..##..#. 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
         let map = Map::new(&".###..##...# 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
         let map = Map::new(&".###...##.#. 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
         let map = Map::new(&".###...##..# 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
         let map = Map::new(&".###....##.# 3,2,1");
-        assert_eq!(true, map.can_possibly_match(&map.map));
+        assert_eq!(true, map.can_possibly_match(&map.map).matched);
     }
     #[test]
     fn test_minimum_width() {
@@ -434,7 +558,7 @@ mod tests {
     #[test]
     fn test_not_match_remaining_groups_dont_fit() {
         let m = Map::new(".###.....??? 3,2,1");
-        assert_eq!(false, m.can_possibly_match(&m.map));
+        assert_eq!(false, m.can_possibly_match(&m.map).matched);
     }
 
     #[test]
@@ -451,29 +575,52 @@ mod tests {
 .###.##.##.# 3,2,1";
         for test in testdata.lines() {
             let map = Map::new(test);
-            assert_eq!(false, map.can_possibly_match(&map.map));
+            assert_eq!(false, map.can_possibly_match(&map.map).matched);
         }
     }
     #[test]
     fn test_can_possibly_match() {
         let line = Map::new("?###???????? 3,2,1");
-        assert!(&line.can_possibly_match(&MapSegment::to_vec("?###????????")));
-        assert!(!&line.can_possibly_match(&MapSegment::to_vec("####????????")));
-        assert!(&line.can_possibly_match(&MapSegment::to_vec(".###????????")));
-        assert!(&line.can_possibly_match(&MapSegment::to_vec(".###.???????")));
-        assert!(!&line.can_possibly_match(&MapSegment::to_vec(".####???????")));
+        assert!(
+            &line
+                .can_possibly_match(&MapSegment::to_vec("?###????????"))
+                .matched
+        );
+        assert!(
+            !&line
+                .can_possibly_match(&MapSegment::to_vec("####????????"))
+                .matched
+        );
+        assert!(
+            &line
+                .can_possibly_match(&MapSegment::to_vec(".###????????"))
+                .matched
+        );
+        assert!(
+            &line
+                .can_possibly_match(&MapSegment::to_vec(".###.???????"))
+                .matched
+        );
+        assert!(
+            !&line
+                .can_possibly_match(&MapSegment::to_vec(".####???????"))
+                .matched
+        );
         let map = Map::new("?#?#?#?#?#?#?#? 1,3,1,6");
         assert_eq!(
             true,
             map.can_possibly_match(&MapSegment::to_vec("?#?#?#?#?#?#?#?"))
+                .matched
         );
         assert_eq!(
             false,
             map.can_possibly_match(&MapSegment::to_vec("##?#?#?#?#?#?#?"))
+                .matched
         );
         assert_eq!(
             true,
             map.can_possibly_match(&MapSegment::to_vec(".#?#?#?#?#?#?#?"))
+                .matched
         );
     }
     #[test]
@@ -507,7 +654,7 @@ mod tests {
         let data = std::fs::read_to_string("2023/12test.txt").unwrap();
         for line in data.lines() {
             let map = Map::new(line);
-            assert_eq!(false, map.can_possibly_match(&map.map));
+            assert_eq!(false, map.can_possibly_match(&map.map).matched);
         }
     }
 }
