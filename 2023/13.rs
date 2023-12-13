@@ -1,5 +1,5 @@
 struct Pattern {
-    data: Vec<String>,
+    data: Vec<Vec<u8>>,
     width: usize,
     height: usize,
 }
@@ -7,7 +7,8 @@ struct Pattern {
 impl std::fmt::Display for Pattern {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for row in &self.data {
-            if let Err(e) = writeln!(f, "{}", row) {
+            let str = String::from_utf8(row.clone()).unwrap();
+            if let Err(e) = writeln!(f, "{}", &str) {
                 return Err(e);
             }
         }
@@ -16,7 +17,7 @@ impl std::fmt::Display for Pattern {
 }
 impl Pattern {
     fn is_vertical_candidate(&self, x: isize, row: usize) -> bool {
-        let s = self.data[row].as_bytes();
+        let s = self.data.get(row).unwrap();
         let s_size = s.len() as isize;
         for ix in 0isize.. {
             let left_ix: isize = x - ix;
@@ -37,7 +38,7 @@ impl Pattern {
         let s: Vec<u8> = self
             .data
             .iter()
-            .map(|st| *st.as_bytes().get(x as usize).unwrap())
+            .map(|st| *st.get(x as usize).unwrap())
             .collect();
         let s_size = s.len() as isize;
 
@@ -76,9 +77,14 @@ impl Pattern {
         return true;
     }
 
-    fn find_vertical(&self) -> Option<usize> {
+    fn find_vertical(&self, ignore: Option<usize>) -> Option<usize> {
         let mut candidates: Vec<usize> = Vec::new();
         for c in 0..(&self.width - 1) {
+            if let Some(ig) = ignore {
+                if ig == c {
+                    continue;
+                }
+            }
             if self.is_vertical_candidate(c as isize, 0) {
                 candidates.push(c);
             }
@@ -93,9 +99,15 @@ impl Pattern {
         None
     }
 
-    fn find_horizontal(&self) -> Option<usize> {
+    fn find_horizontal(&self, ignore: Option<usize>) -> Option<usize> {
         let mut candidates: Vec<usize> = Vec::new();
         for r in 0..(&self.height - 1) {
+            if let Some(ig) = ignore {
+                if ig == r {
+                    continue;
+                }
+            }
+
             if self.is_horizontal_candidate(0, r as isize) {
                 candidates.push(r);
             }
@@ -109,15 +121,51 @@ impl Pattern {
 
         None
     }
+    fn find(
+        &self,
+        ignore_vertical: Option<usize>,
+        ignore_horizontal: Option<usize>,
+    ) -> Option<usize> {
+        if let Some(c) = self.find_vertical(ignore_vertical) {
+            return Some(c + 1);
+        }
+        if let Some(r) = self.find_horizontal(ignore_horizontal) {
+            return Some((r + 1) * 100);
+        }
+        return None;
+    }
+    fn find_flipped(&mut self) -> usize {
+        let ignore_vertical = self.find_vertical(None);
+        let ignore_horizontal = self.find_horizontal(None);
+        for r in 0..self.height {
+            for c in 0..self.width {
+                self.flip(r, c);
+                if let Some(value) = self.find(ignore_vertical, ignore_horizontal) {
+                    return value;
+                }
+                self.flip(r, c);
+            }
+        }
+        panic!("invalid flipped pattern")
+    }
 
     fn summarise(&self) -> usize {
-        if let Some(c) = self.find_vertical() {
+        if let Some(c) = self.find_vertical(None) {
             return c + 1;
         }
-        if let Some(r) = self.find_horizontal() {
+        if let Some(r) = self.find_horizontal(None) {
             return (r + 1) * 100;
         }
         panic!("invalid pattern")
+    }
+
+    fn flip(&mut self, row: usize, col: usize) {
+        let c = self.data.get_mut(row).unwrap().get_mut(col).unwrap();
+        if *c == 35 {
+            *c = 46;
+        } else {
+            *c = 35
+        }
     }
 
     fn new_vec(data: &str) -> Vec<Pattern> {
@@ -136,9 +184,11 @@ impl Pattern {
         }
         r
     }
-    fn new(data: Vec<String>) -> Pattern {
-        let width = data.get(0).unwrap().len();
-        let height = data.len();
+    fn new(strdata: Vec<String>) -> Pattern {
+        let width = strdata.get(0).unwrap().len();
+        let height = strdata.len();
+        let data = strdata.iter().map(|d| d.as_bytes().to_owned()).collect();
+
         Pattern {
             data,
             width,
@@ -148,12 +198,17 @@ impl Pattern {
 }
 fn main() {
     let data = std::fs::read_to_string("2023/13.txt").unwrap();
-    let p = Pattern::new_vec(&data);
+    let mut p = Pattern::new_vec(&data);
 
     println!(
         "summarized: {}",
         p.iter().map(|f| f.summarise()).sum::<usize>()
     );
+    println!(
+        "flipped: {}",
+        p.iter_mut().map(|f| f.find_flipped()).sum::<usize>()
+    );
+    // 32587 is too high
 }
 
 #[cfg(test)]
@@ -176,6 +231,19 @@ mod tests {
 #....#..#
 ";
     #[test]
+    fn test_can_summarize_flipped() {
+        let mut p = Pattern::new_vec(TEST_DATA);
+        assert_eq!(400usize, p.iter_mut().map(|f| f.find_flipped()).sum());
+    }
+
+    #[test]
+    fn test_can_flip_one() {
+        let mut p = Pattern::new_vec(TEST_DATA);
+        assert!(p[0].to_string().starts_with('#'));
+        p[0].flip(0, 0);
+        assert!(p[0].to_string().starts_with('.'));
+    }
+    #[test]
     fn test_can_summarize() {
         let p = Pattern::new_vec(TEST_DATA);
 
@@ -184,14 +252,14 @@ mod tests {
     #[test]
     fn test_find_vertical() {
         let p = Pattern::new_vec(TEST_DATA);
-        assert_eq!(Some(4), p[0].find_vertical());
-        assert_eq!(None, p[1].find_vertical());
+        assert_eq!(Some(4), p[0].find_vertical(None));
+        assert_eq!(None, p[1].find_vertical(None));
     }
     #[test]
     fn test_find_horizontal() {
         let p = Pattern::new_vec(TEST_DATA);
-        assert_eq!(None, p[0].find_horizontal());
-        assert_eq!(Some(3), p[1].find_horizontal());
+        assert_eq!(None, p[0].find_horizontal(None));
+        assert_eq!(Some(3), p[1].find_horizontal(None));
     }
     #[test]
     fn test_can_determine_is_candidate() {
