@@ -51,7 +51,7 @@ impl Map {
         }
         None
     }
-    fn count_matches_inner(&self, bench: &mut [MapSegment], current: usize) -> u32 {
+    fn count_matches_inner(&self, bench: &mut [MapSegment], current: usize, depth: usize) -> u32 {
         // current should be pointing to an unknown
         let next_unknown_index = Map::find_next_unknown(&bench, current + 1);
 
@@ -60,13 +60,13 @@ impl Map {
         let a_branch_can_match = self.can_possibly_match(bench);
         if a_branch_can_match {
             if let Some(ix) = next_unknown_index {
-                recursed_sum += self.count_matches_inner(bench, ix);
+                recursed_sum += self.count_matches_inner(bench, ix, depth + 1);
             } else {
-                let as_str = SegmentVector(bench.to_owned());
-                if !self.record.str_match(&as_str.to_string()) {
-                    self.print_match(bench, "match_a");
-                    return 0;
-                }
+                //                let as_str = SegmentVector(bench.to_owned());
+                // if !self.record.str_match(&as_str.to_string()) {
+                //     self.print_match(bench, "match_a");
+                //     return 0;
+                // }
                 assert!(self.map[current] == MapSegment::Unknown);
                 bench[current] = MapSegment::Unknown; // restore
                 return 1;
@@ -77,7 +77,7 @@ impl Map {
         let b_branch_can_match = self.can_possibly_match(bench);
         if b_branch_can_match {
             if let Some(ix) = next_unknown_index {
-                recursed_sum += self.count_matches_inner(bench, ix);
+                recursed_sum += self.count_matches_inner(bench, ix, depth + 1);
             } else {
                 let as_str = SegmentVector(bench.to_owned());
                 if !self.record.str_match(&as_str.to_string()) {
@@ -94,7 +94,7 @@ impl Map {
     }
     fn count_matches(&self) -> u32 {
         if let Some(first_index) = Map::find_next_unknown(&self.map, 0) {
-            return self.count_matches_inner(&mut self.map.clone(), first_index);
+            return self.count_matches_inner(&mut self.map.clone(), first_index, 1);
         } else {
             return 0;
         }
@@ -111,21 +111,21 @@ impl Map {
         Some(sum - 1)
     }
     fn print_match(&self, map: &[MapSegment], label: &str) {
-        println!(
-            "{} {} r{:?}",
-            label,
-            SegmentVector(map.to_owned()),
-            self.record.entries
-        );
+        // println!(
+        //     "{} {} r{:?}",
+        //     label,
+        //     SegmentVector(map.to_owned()),
+        //     self.record.entries
+        // );
     }
     fn print_return(&self, map: &[MapSegment], label: &str, ret: bool) -> bool {
-        println!(
-            "{}-{} {} r{:?}",
-            if ret { 'o' } else { 'x' },
-            label,
-            SegmentVector(map.to_owned()),
-            self.record.entries
-        );
+        // println!(
+        //     "{}-{} {} r{:?}",
+        //     if ret { 'o' } else { 'x' },
+        //     label,
+        //     SegmentVector(map.to_owned()),
+        //     self.record.entries
+        // );
         ret
     }
     fn can_possibly_match(&self, map: &[MapSegment]) -> bool {
@@ -208,15 +208,32 @@ impl Map {
                 return self.print_return(map, "NY", false);
             }
         }
-
-        return self.print_return(map, "ae", true);
-
         return true;
+    }
+    fn count_unknowns(&self) -> usize {
+        self.map
+            .iter()
+            .filter(|&i| *i == MapSegment::Unknown)
+            .count()
     }
     fn new(data: &str) -> Map {
         let spl: Vec<&str> = data.split(' ').collect();
         let record = Record::new(spl[1]);
         let map: Vec<MapSegment> = MapSegment::to_vec(spl[0]);
+        Map { record, map }
+    }
+    fn expand(data: &str, separator: char) -> String {
+        let mut out = String::from(data);
+        for _ in 0..4 {
+            out.push(separator);
+            out.push_str(data);
+        }
+        out
+    }
+    fn new_expanded(data: &str) -> Map {
+        let spl: Vec<&str> = data.split(' ').collect();
+        let record = Record::new(&Map::expand(spl[1], ','));
+        let map: Vec<MapSegment> = MapSegment::to_vec(&Map::expand(spl[0], '?'));
         Map { record, map }
     }
 }
@@ -284,12 +301,25 @@ fn main() {
         sum += Map::new(line).count_matches();
     }
     println!("summed: {}", sum);
+    let data = std::fs::read_to_string("2023/12.txt").unwrap();
+    let mut sum = 0;
+    for line in data.lines() {
+        let map = Map::new_expanded(line);
+        println!("{} ({})", line, map.count_unknowns());
+        sum += map.count_matches();
+    }
+    println!("expanded: {}", sum);
+    // 351 is too low
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    static TEST_DATA: &str = r"";
+
+    #[test]
+    fn test_expand() {
+        assert_eq!("a,a,a,a,a", Map::expand("a", ','))
+    }
     #[test]
     fn test_can_count_matches() {
         assert_eq!(1, Map::new("???.### 1,1,3").count_matches());
@@ -301,18 +331,45 @@ mod tests {
         assert_eq!(10, Map::new("?###???????? 3,2,1").count_matches());
     }
     #[test]
+    fn test_can_count_matches_expanded() {
+        assert_eq!(1, Map::new_expanded("???.### 1,1,3").count_matches());
+        assert_eq!(
+            16384,
+            Map::new_expanded(".??..??...?##. 1,1,3").count_matches()
+        );
+        assert_eq!(
+            1,
+            Map::new_expanded("?#?#?#?#?#?#?#? 1,3,1,6").count_matches()
+        );
+        assert_eq!(16, Map::new_expanded("????.#...#... 4,1,1").count_matches());
+        assert_eq!(
+            2500,
+            Map::new_expanded("????.######..#####. 1,6,5").count_matches()
+        );
+        assert_eq!(
+            506250,
+            Map::new_expanded("?###???????? 3,2,1").count_matches()
+        );
+    }
+    #[test]
     fn test_recursion_matches() {
         let m = Map::new(".###.....??? 3,2,1");
         let n = Map::find_next_unknown(&m.map, 0);
         assert_eq!(Some(9), n);
         let mut bench = m.map.clone();
-        let r = m.count_matches_inner(&mut bench, 9);
+        let r = m.count_matches_inner(&mut bench, 9, 1);
         assert_eq!(0, r)
     }
     #[test]
     fn test_can_find_specific() {
         let map = Map::new(&".###.##....? 3,2,1");
         assert_eq!(true, map.can_possibly_match(&map.map));
+    }
+    //    #[test]
+    fn test_can_run_on_expanded() {
+        let map = Map::new_expanded(&"??????#..????##??? 1,1,1,1,5");
+        let count = map.count_matches();
+        assert_eq!(1, count);
     }
 
     #[test]
