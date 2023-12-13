@@ -105,7 +105,7 @@ impl Map {
         Some(sum - 1)
     }
     fn can_possibly_match(&self, map: &[MapSegment]) -> bool {
-        let mut marker = 0;
+        let mut marker = 0u8;
         let mut groupsize = 0u8;
         let mut groupnumber = 0usize;
         let mut currently_counting_damaged_group = false;
@@ -129,14 +129,25 @@ impl Map {
                         groupnumber += 1;
                     }
                     MapSegment::Unknown => {
-                        // if let Some(cc) = self.minimum_width(groupnumber + 1) {
-                        //     let remaining_unchecked = map.len() - (marker + 1);
-                        //     if cc > remaining_unchecked as u8 {
-                        //         return false;
-                        //     }
-                        // } else {
-                        //     return false;
-                        // }
+                        if let Some(cc) = self.minimum_width(groupnumber) {
+                            // counting from where this group started, how much remains of width
+                            let remaining_unchecked = map.len() - (marker - groupsize) as usize;
+                            if cc > remaining_unchecked as u8 {
+                                println!(
+                                    "CU {} r{:?}",
+                                    SegmentVector(map.to_owned()),
+                                    self.record.entries
+                                );
+                                return false;
+                            }
+                        } else {
+                            println!(
+                                "CX {} r{:?}",
+                                SegmentVector(map.to_owned()),
+                                self.record.entries
+                            );
+                            return false;
+                        }
                         if let Some(record) = self.record.entries.get(groupnumber) {
                             if *record < groupsize {
                                 return false;
@@ -148,6 +159,24 @@ impl Map {
                 }
             } else {
                 if *s == MapSegment::Unknown {
+                    if let Some(cc) = self.minimum_width(groupnumber as usize) {
+                        let remaining_unchecked = map.len() - marker as usize;
+                        if cc > remaining_unchecked as u8 {
+                            println!(
+                                "EU {} r{:?}",
+                                SegmentVector(map.to_owned()),
+                                self.record.entries
+                            );
+                            return false;
+                        }
+                        // } else {
+                        //     println!(
+                        //         "EX {} r{:?}",
+                        //         SegmentVector(map.to_owned()),
+                        //         self.record.entries
+                        //     );
+                        //     return false;
+                    }
                     return true;
                 }
 
@@ -159,12 +188,17 @@ impl Map {
             marker += 1;
         }
         if currently_counting_damaged_group {
-            // if self.record.entries.len() != groupnumber + 1 {
-            //     return false;
-            // }
-            match self.record.entries.get(groupnumber) {
+            if self.record.entries.len() != groupnumber as usize + 1 {
+                println!(
+                    "NX {} r{:?}",
+                    SegmentVector(map.to_owned()),
+                    self.record.entries
+                );
+                return false;
+            }
+            match self.record.entries.get(groupnumber as usize) {
                 Some(record) => {
-                    if *record != groupsize {
+                    if *record != groupsize as u8 {
                         return false;
                     }
                 }
@@ -264,6 +298,11 @@ mod tests {
         let mut bench = m.map.clone();
         let r = m.count_matches_inner(&mut bench, 9);
         assert_eq!(0, r)
+    }
+    #[test]
+    fn test_can_find_specific() {
+        let map = Map::new(&".###.##....? 3,2,1");
+        assert_eq!(true, map.can_possibly_match(&map.map));
     }
 
     #[test]
