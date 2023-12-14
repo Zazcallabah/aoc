@@ -4,10 +4,11 @@ version = "1.0.0"
 
 [[bin]]
 name = "aoc"
-path = "2023/13.rs"
+path = "2023/14.rs"
 edition = "2021"
 
 [dependencies]
+md5 = "0.7.0"
 #primal = "*"
 regex = "1"
 #lazy_static = "*"
