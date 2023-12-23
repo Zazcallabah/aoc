@@ -29,11 +29,25 @@
 			this.tag = tag ?? "";
 		}
 
-		function Instruction(line) {
+		function Instruction(line, part2) {
 			let matches = line.match(r_match)
-			this.dir = matches[1];
-			this.count = parseInt(matches[2], 10);
-			this.color = matches[3];
+			if (part2) {
+				this.color = "#000000"
+
+				this.count = Number(`0x${matches[3].substring(1, 6)}`)
+
+				switch (matches[3].charAt(6)) {
+					case '0': this.dir = "R"; break;
+					case '1': this.dir = "D"; break;
+					case '2': this.dir = "L"; break;
+					case '3': this.dir = "U"; break;
+				}
+
+			} else {
+				this.dir = matches[1];
+				this.count = parseInt(matches[2], 10);
+				this.color = matches[3];
+			}
 		}
 		function Line(row, from, to) {
 			this.row = row;
@@ -85,7 +99,7 @@
 			throw new Error("invalid dir")
 		}
 		const findDeltaY = (floors, row, col) => {
-			let closest = 1000000;
+			let closest = 10000000000;
 			for (const floor of floors) {
 				if (floor.row > row && col >= floor.from && col <= floor.to) {
 					const dy = floor.row - row;
@@ -94,7 +108,7 @@
 					}
 				}
 			}
-			if (closest < 0 || closest === 1000000) {
+			if (closest < 0 || closest === 10000000000) {
 				throw new Error("invalid delta y")
 			}
 			return closest;
@@ -103,16 +117,14 @@
 		Field.prototype.integrateAll = function () {
 			let segments = []
 			for (const line of this.ceilings) {
-				segments.push(this.integralOneLine(line));
+				let segment = this.integralOneLine(line)
+				segments.push(segment);
 			}
 			return segments.flat()
 		}
 
 		Field.prototype.integralOneLine = function (line) {
 			let segments = []
-			if (line.row === -150) {
-				let a = 0;// (-85,-82)
-			}
 			const floors = this.findFloors(line);
 			let x_points = [line.from, line.to]
 
@@ -133,11 +145,7 @@
 				if (delta_x === 0) {
 					continue;
 				}
-				let delta_y = findDeltaY(floors, line.row, x_points[i - 1])
-				let delta_yb = findDeltaY(floors, line.row, x_points[i])
-				// if (delta_y !== delta_yb) {
-				// 	throw new Error("aoeu")
-				// }
+				let delta_y = findDeltaY(floors, line.row, x_points[i - 1] + 0.000001) + 1
 				segments.push(new Segment(x_points[i - 1], line.row, delta_x, delta_y, line.tag));
 			}
 			return segments
@@ -195,10 +203,9 @@
 		}
 
 		const ready = () => {
-			const stage = "data"; //first is floor
-			//const stage = "test"; first is ceil
+			const stage = "data";
 			const input = document.getElementById(stage).innerText
-			let lines = input.split("\n").map((l) => new Instruction(l));
+			let lines = input.split("\n").map((l) => new Instruction(l, true));
 			let field = new Field()
 			let t = new Trace();
 			let divs = []
@@ -214,26 +221,30 @@
 			}
 			for (const floor of field.floors) {
 				const width = floor.to - floor.from;
-				divs.push(asDiv(new Segment(floor.from, floor.row, width, 1, floor.tag), "red", "#00000000"));
+				//	divs.push(asDiv(new Segment(floor.from, floor.row, width, 1, floor.tag), "red", "#00000000"));
 			}
 			for (const ceil of field.ceilings) {
 				const width = ceil.to - ceil.from;
 				console.log(ceil.tag)
-				divs.push(asDiv(new Segment(ceil.from, ceil.row, width, 1, ceil.tag), "cyan", "#00000000"));
+				//	divs.push(asDiv(new Segment(ceil.from, ceil.row, width, 1, ceil.tag), "cyan", "#00000000"));
 			}
 
-			document.getElementById("content").innerHTML = divs.join("\n")
+			//	document.getElementById("content").innerHTML = divs.join("\n")
 			const divs2 = []
 
-			setTimeout(() => {
-				const segments = field.integrateAll();
-				console.log(segments.length);
-				for (const s of segments) {
-					divs2.push(asDiv(s, "#00000000", "#FF000044"));
-				}
-				document.getElementById("content").innerHTML += divs2.join("\n")
+			const segments = field.integrateAll();
+			console.log(segments.length);
+			for (const s of segments) {
+				//	divs2.push(asDiv(s, "#00000000", "#FF000044"));
+			}
+			//	document.getElementById("content").innerHTML += divs2.join("\n")
 
-			}, 1)
+			let sum = 0;
+			for (const s of segments) {
+				sum += s.delta_col * s.delta_row;
+			}
+
+			document.getElementById("output").innerHTML = sum
 
 		}
 		window.onload = ready;
