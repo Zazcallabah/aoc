@@ -19,6 +19,7 @@ struct Limits {
     a: Vec<Range>,
     s: Vec<Range>,
 }
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 struct Range {
     from: u32,
     to: u32,
@@ -26,6 +27,9 @@ struct Range {
 impl Range {
     fn new(from: u32, to: u32) -> Range {
         Range { from, to }
+    }
+    fn delta(&self) -> u64 {
+        self.to as u64 - self.from as u64
     }
 }
 impl Limits {
@@ -299,67 +303,70 @@ impl WorkSet {
             }
         }
     }
+    fn find_ranges(rules: &[&Rule], cat: Category) -> Vec<Range> {
+        let mut head = 0;
+        let mut ranges = Vec::new();
+        for r in rules.iter().filter(|f| f.category == Some(cat)) {
+            if head == r.limit {
+                panic!("zero length limit");
+            }
+            if r.op == Some(Op::Lt) {
+                ranges.push(Range::new(head, r.limit - 1));
+                head = r.limit;
+            } else if r.op == Some(Op::Gt) {
+                ranges.push(Range::new(head, r.limit));
+                head = r.limit + 1;
+            }
+        }
+        if head < 4000 {
+            ranges.push(Range::new(head, 4000));
+        }
+        ranges
+    }
     fn find_limits(&self) -> Limits {
         let mut l = Limits::new();
         let mut all_rules = Vec::new();
         for wf in &self.workflows {
             for rule in wf.1.rules.iter() {
-                if let Some(cat) = rule.category {
+                if let Some(_) = rule.category {
                     all_rules.push(rule);
                 }
-                //     match cat {
-                //         Category::X => l.x.push(rule.limit),
-                //         Category::M => l.m.push(rule.limit),
-                //         Category::A => l.a.push(rule.limit),
-                //         Category::S => l.s.push(rule.limit),
-                //     }
-                // }
             }
         }
         all_rules.sort_unstable_by_key(|f| f.limit);
-        // l.x.sort();
-        // l.m.sort();
-        // l.a.sort();
-        // l.s.sort();
-
+        l.x = WorkSet::find_ranges(&all_rules, Category::X);
+        l.m = WorkSet::find_ranges(&all_rules, Category::M);
+        l.a = WorkSet::find_ranges(&all_rules, Category::A);
+        l.s = WorkSet::find_ranges(&all_rules, Category::S);
         l
     }
-    // fn crunch(&self) -> u64 {
-    //     let mut count = 0;
-    //     let limits = self.find_limits();
-    //     for ix in 1..limits.x.len() {
-    //         let x_from = limits.x[ix - 1];
-    //         let x_to = limits.x[ix];
-    //         if x_from == x_to {continue;}
-
-    //         for im in 1..limits.m.len() {
-    //             let m_from = limits.m[im- 1];
-    //             let m_to = limits.m[im];
-    //             if m_from == m_to {continue;}
-
-    //             for ia in 1..limits.a.len() {
-    //                 let a_from = limits.a[ia - 1];
-    //                 let a_to = limits.a[ia];
-    //                 if a_from == a_to {continue;}
-
-    //                 for is in 1..limits.s.len() {
-    //                     let s_from = limits.s[is - 1];
-    //                     let s_to = limits.s[is];
-    //                     if s_from == s_to {continue;}
-
-    //         // for m in 1..=4000 {
-    //         //     for a in 1..=4000 {
-    //         //         for s in 1..=4000 {
-    //         //             if self.run(&Rating { x, m, a, s }) {
-    //         //                 count += 1;
-    //         //             }
-    //         //         }
-    //         //     }
-    //         //     println!(".")
-    //         // }
-    //     }
-    //     count
-    // }
+    fn crunch(&self) -> u64 {
+        let mut count: u64 = 0;
+        let limits = self.find_limits();
+        for x_range in &limits.x {
+            let dx = x_range.delta();
+            for m_range in &limits.m {
+                let dm = m_range.delta();
+                for a_range in &limits.a {
+                    let da = a_range.delta();
+                    for s_range in &limits.s {
+                        let ds = s_range.delta();
+                        let rating = Rating {
+                            x: x_range.from,
+                            m: m_range.from,
+                            a: a_range.from,
+                            s: s_range.from,
+                        };
+                        let is_accepted = self.run(&rating);
+                        if is_accepted {
+                            count += dx * dm * da * ds;
+                        }
+                    }
+                }
+            }
+        }
+        count
+    }
 }
 fn main() {
     let data = std::fs::read_to_string("2023/19.txt").unwrap();
@@ -376,7 +383,7 @@ fn main() {
     println!("m thrice: {}", w);
 
     //   let c = w.crunch(); // 40000 hours with first attempt minimize
-    println!("crunch: {}", c);
+    //println!("crunch: {}", c);
 }
 
 #[cfg(test)]
@@ -438,13 +445,35 @@ mod tests {
         assert_eq!(true, w.run(&w.ratings[4]));
     }
     #[test]
+    fn test_can_count_all_range() {
+        let w = WorkSet::new(TEST_DATA);
+        let count = w.crunch();
+        assert_eq!(167409079868000, count);
+    }
+    #[test]
     fn test_can_collect_rule_limits() {
         let w = WorkSet::new(TEST_DATA);
         let l = w.find_limits();
-        //        assert_eq!(4, l.m.len());
-        assert_eq!(vec![, 1351, 2770, 3448], l.s)
+        assert_eq!(
+            vec![
+                Range::new(0, 1415),
+                Range::new(1416, 2440),
+                Range::new(2441, 2662),
+                Range::new(2663, 4000),
+            ],
+            l.x
+        );
+        assert_eq!(
+            vec![
+                Range::new(0, 838),
+                Range::new(839, 1548),
+                Range::new(1549, 1800),
+                Range::new(1801, 2090),
+                Range::new(2091, 4000),
+            ],
+            l.m
+        )
     }
-    // 0-1415 1416-2440 2441-2662 2663-4000
     static TEST_DATA: &str = r"px{a<2006:qkq,m>2090:A,rfg}
 pv{a>1716:R,A}
 lnx{m>1548:A,A}
