@@ -1,6 +1,10 @@
 #[macro_use]
 extern crate lazy_static;
-use std::collections::{HashMap, HashSet};
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+    time::SystemTime,
+};
 
 use regex::Regex;
 struct WorkSet {
@@ -19,6 +23,12 @@ struct Limits {
     a: Vec<Range>,
     s: Vec<Range>,
 }
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+struct RuleData {
+    op: Op,
+    limit: u32,
+    category: Category,
+}
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 struct Range {
     from: u32,
@@ -26,10 +36,13 @@ struct Range {
 }
 impl Range {
     fn new(from: u32, to: u32) -> Range {
+        if to < from {
+            panic!("invalid range")
+        }
         Range { from, to }
     }
     fn delta(&self) -> u64 {
-        self.to as u64 - self.from as u64
+        (self.to as u64 - self.from as u64) + 1
     }
 }
 impl Limits {
@@ -55,12 +68,12 @@ struct Rating {
     a: u32,
     s: u32,
 }
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 enum Op {
     Lt,
     Gt,
 }
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 enum Category {
     X,
     M,
@@ -92,6 +105,16 @@ impl Op {
             }
         } else {
             None
+        }
+    }
+}
+
+impl RuleData {
+    fn from(rule: &Rule) -> RuleData {
+        RuleData {
+            category: rule.category.unwrap(),
+            limit: rule.limit,
+            op: rule.op.unwrap(),
         }
     }
 }
@@ -196,11 +219,6 @@ impl Rating {
 }
 impl std::fmt::Display for WorkSet {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        // for row in &self.workflows {
-        //     if let Err(e) = writeln!(f, "{}", row.1) {
-        //         return Err(e);
-        //     }
-        // }
         let counts = self.count_early_outs();
         writeln!(f, "A:{} R:{}", counts.0, counts.1)
     }
@@ -303,37 +321,60 @@ impl WorkSet {
             }
         }
     }
-    fn find_ranges(rules: &[&Rule], cat: Category) -> Vec<Range> {
-        let mut head = 0;
+
+    fn find_ranges(rules: &[RuleData], cat: Category) -> Vec<Range> {
+        let mut head = 1;
         let mut ranges = Vec::new();
-        for r in rules.iter().filter(|f| f.category == Some(cat)) {
-            if head == r.limit {
-                panic!("zero length limit");
-            }
-            if r.op == Some(Op::Lt) {
-                ranges.push(Range::new(head, r.limit - 1));
-                head = r.limit;
-            } else if r.op == Some(Op::Gt) {
-                ranges.push(Range::new(head, r.limit));
-                head = r.limit + 1;
+        for r in rules.iter().filter(|f| f.category == cat) {
+            if r.op == Op::Lt {
+                if head < r.limit {
+                    ranges.push(Range::new(head, r.limit - 1));
+                    head = r.limit;
+                }
+            } else if r.op == Op::Gt {
+                if head == r.limit {
+                    ranges.push(Range::new(head, head));
+                    head += 1;
+                } else {
+                    ranges.push(Range::new(head, r.limit));
+                    head = r.limit + 1;
+                }
             }
         }
-        if head < 4000 {
+        if head <= 4000 {
             ranges.push(Range::new(head, 4000));
         }
         ranges
     }
     fn find_limits(&self) -> Limits {
         let mut l = Limits::new();
-        let mut all_rules = Vec::new();
+        let mut rules_set: HashSet<RuleData> = HashSet::new();
         for wf in &self.workflows {
             for rule in wf.1.rules.iter() {
                 if let Some(_) = rule.category {
-                    all_rules.push(rule);
+                    let data = RuleData::from(rule);
+                    if !rules_set.contains(&data) {
+                        rules_set.insert(data);
+                    }
                 }
             }
         }
-        all_rules.sort_unstable_by_key(|f| f.limit);
+        let mut all_rules: Vec<RuleData> = rules_set.into_iter().collect();
+        all_rules.sort_by(|a, b| {
+            if a.limit == b.limit {
+                if a.op == b.op {
+                    Ordering::Equal
+                } else if a.op == Op::Gt {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                }
+            } else if a.limit > b.limit {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        });
         l.x = WorkSet::find_ranges(&all_rules, Category::X);
         l.m = WorkSet::find_ranges(&all_rules, Category::M);
         l.a = WorkSet::find_ranges(&all_rules, Category::A);
@@ -343,6 +384,16 @@ impl WorkSet {
     fn crunch(&self) -> u64 {
         let mut count: u64 = 0;
         let limits = self.find_limits();
+        println!(
+            "x:{} m:{} a:{} s:{}",
+            &limits.x.len(),
+            &limits.m.len(),
+            &limits.a.len(),
+            &limits.s.len()
+        );
+        let progress_done: f32 = limits.x.len().to_owned() as f32;
+        let mut progress = 0f32;
+        let now = SystemTime::now();
         for x_range in &limits.x {
             let dx = x_range.delta();
             for m_range in &limits.m {
@@ -358,12 +409,36 @@ impl WorkSet {
                             s: s_range.from,
                         };
                         let is_accepted = self.run(&rating);
+                        let rating_end = Rating {
+                            x: x_range.to,
+                            m: m_range.to,
+                            a: a_range.to,
+                            s: s_range.to,
+                        };
+                        let is_accepted_end = self.run(&rating_end);
+                        if is_accepted != is_accepted_end {
+                            panic!("invalid assumption")
+                        }
                         if is_accepted {
                             count += dx * dm * da * ds;
                         }
                     }
                 }
             }
+            if let Ok(t) = now.elapsed() {
+                let percent: f32 = progress / progress_done;
+                let remaining_percent = 1f32 - percent;
+                let took = t.as_millis();
+
+                let one_p_speed: f32 = took as f32 / percent;
+                println!(
+                    "{:.2}% took {}ms - remaining: {:.2} minutes",
+                    percent,
+                    took,
+                    (remaining_percent * one_p_speed) / 60000f32
+                );
+            }
+            progress += 1f32;
         }
         count
     }
@@ -382,8 +457,9 @@ fn main() {
     w.minimize();
     println!("m thrice: {}", w);
 
-    //   let c = w.crunch(); // 40000 hours with first attempt minimize
-    //println!("crunch: {}", c);
+    let c = w.crunch(); // 40000 hours with first attempt minimize
+                        // 1 hour with second attempt minimize (broken)
+    println!("crunch: {}", c);
 }
 
 #[cfg(test)]
@@ -451,12 +527,34 @@ mod tests {
         assert_eq!(167409079868000, count);
     }
     #[test]
+    fn test_can_count_range_delta() {
+        let w = WorkSet::new(TEST_DATA);
+        let l = w.find_limits();
+        assert_eq!(1415, l.x[0].delta());
+        assert_eq!(1025, l.x[1].delta());
+    }
+    #[test]
+    fn test_can_find_tricky_ranges() {
+        let w = WorkSet::new("px{a>1:ooo,a>2067:qkq,a<2068:aaa,a>2068:abcd,a<3333:uuu,rfg}\n\n");
+        let l = w.find_limits();
+        assert_eq!(
+            vec![
+                Range::new(1, 1),
+                Range::new(2, 2067),
+                Range::new(2068, 2068),
+                Range::new(2069, 3332),
+                Range::new(3333, 4000),
+            ],
+            l.a
+        );
+    }
+    #[test]
     fn test_can_collect_rule_limits() {
         let w = WorkSet::new(TEST_DATA);
         let l = w.find_limits();
         assert_eq!(
             vec![
-                Range::new(0, 1415),
+                Range::new(1, 1415),
                 Range::new(1416, 2440),
                 Range::new(2441, 2662),
                 Range::new(2663, 4000),
@@ -465,7 +563,7 @@ mod tests {
         );
         assert_eq!(
             vec![
-                Range::new(0, 838),
+                Range::new(1, 838),
                 Range::new(839, 1548),
                 Range::new(1549, 1800),
                 Range::new(1801, 2090),
