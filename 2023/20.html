@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="utf-8" />
+	<title></title>
+	<script src="leader-line.min.js"></script>
+
+	<style>
+		body {
+			background: #444;
+		}
+
+		#content>div {
+			position: absolute;
+			border: 1px solid black;
+			width: 40px;
+			height: 20px;
+			padding: 4px;
+			z-index: 100;
+		}
+
+		.Broadcast {
+			background: salmon;
+			width: 100px !important;
+		}
+
+		.FlipFlop {
+			background: #ddd;
+		}
+
+		.Conjunction {
+			background: #88f;
+		}
+	</style>
+	<script>
+		let r_match = /([^ ]+) -> (.+)?/
+
+		function ModuleLocation(name) {
+			this.name = name;
+			if (localStorage[name]) {
+			}
+			this.x = Math.random() * 1000;
+			this.y = Math.random() * 1000;
+		}
+
+		function Module(line) {
+			let matches = line.match(r_match)
+			this.name = matches[1];
+			this.type = "Broadcast";
+			if (this.name.charAt(0) === '%') {
+				this.type = "FlipFlop";
+				this.name = this.name.substring(1);
+			} else if (this.name.charAt(0) === '&') {
+				this.type = "Conjunction";
+				this.name = this.name.substring(1);
+			}
+			this.outputs = matches[2] ? matches[2].split(", ") : [];
+			this.lines = []
+			this.location = new ModuleLocation(this.name);
+			let parent = document.getElementById("content");
+			let div = document.createElement("div");
+			div.id = this.name;
+			div.className = this.type;
+			div.innerHTML = matches[1];
+			parent.appendChild(div);
+		}
+
+		Module.prototype.initLines = function () {
+			this.outputs.forEach(o => {
+				this.lines.push(new LeaderLine(
+					document.getElementById(this.name),
+					document.getElementById(o)
+				));
+			})
+		}
+
+		Module.prototype.drawLines = function () {
+			this.lines.forEach(l => {
+				l.position();
+			})
+		};
+
+		Module.prototype.draw = function () {
+			let div = document.getElementById(this.name);
+			div.style.top = `${this.location.y}px`
+			div.style.left = `${this.location.x}px`
+		}
+
+		const getModule = (modules, name) => {
+			let filtered = modules.filter(m => { m.name === name })
+			if (filtered && filtered.length) {
+				return filtered[0];
+			}
+			throw new Error("invalid module name " + name)
+		};
+
+		const ready = () => {
+			const stage = "data";
+			const input = document.getElementById(stage).innerText
+			let modules = input.split("\n").map((l) => new Module(l));
+			modules.push(new Module("rx -> "));
+			modules.forEach((m) => {
+				m.initLines();
+			});
+			modules.forEach((m) => {
+				m.draw();
+			});
+			modules.forEach((m) => {
+				m.drawLines();
+			});
+		}
+		window.onload = ready;
+	</script>
+</head>
+
+<body>
+	<div id="content">
+	</div>
+
+	<pre id="data" style="display:none">%jb -> fz
+%xz -> ck, bg
+%xm -> qt, cs
+%df -> hc, lq
+%mt -> sx
+%fr -> ks, hc
+%tn -> pf
+%gt -> pp, kb
+%jn -> ck, nz
+%td -> kz
+&rd -> vd
+%pp -> gv, kb
+&qt -> jb, vx, bt, gh, td, gb
+%ms -> xz
+%vx -> fp
+%rb -> ck, mt
+%nz -> hh
+%fp -> rp, qt
+%gd -> gc
+%gv -> kb
+%nl -> cc, hc
+%cs -> qt
+%kz -> jb, qt
+%vg -> fr, hc
+%zq -> qt, xm
+%pv -> ps
+&bt -> vd
+%ps -> kb, rf
+%hh -> ck, ms
+broadcaster -> gn, gb, rb, df
+%gh -> td
+%rf -> kb, nm
+%rp -> qt, gh
+%gc -> kb, pv
+%gb -> vx, qt
+%rq -> ck, ts
+%nm -> gt
+%gn -> kb, tn
+&ck -> nz, fv, rb, sx, ms, mt
+&fv -> vd
+%cc -> vg
+%bg -> ck, rq
+&hc -> qr, ch, df, dj, cc, rd
+%qr -> dj
+%gq -> hc, ch
+&pr -> vd
+%ks -> lc, hc
+%dj -> nl
+%fz -> qt, zq
+%lq -> gq, hc
+&kb -> pv, pr, tn, nm, pf, gn, gd
+%ts -> ck
+%lc -> hc
+%jl -> ck, jn
+%sx -> jl
+%pf -> gd
+&vd -> rx
+%ch -> qr</pre>
+</body>
+
+</html>
