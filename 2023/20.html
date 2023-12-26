@@ -11,6 +11,10 @@
 			background: #444;
 		}
 
+		button {
+			margin: 1rem
+		}
+
 		#content>div {
 			position: absolute;
 			border: 1px solid black;
@@ -39,9 +43,16 @@
 		function ModuleLocation(name) {
 			this.name = name;
 			if (localStorage[name]) {
+				let d = JSON.parse(localStorage[name]);
+				this.x = d.x;
+				this.y = d.y;
+			} else {
+				this.x = 0;
+				this.y = 0;
 			}
-			this.x = Math.random() * 1000;
-			this.y = Math.random() * 1000;
+			this.dx = 0;
+			this.dy = 0;
+			this.adjusted = false;
 		}
 
 		function Module(line) {
@@ -56,27 +67,72 @@
 				this.name = this.name.substring(1);
 			}
 			this.outputs = matches[2] ? matches[2].split(", ") : [];
+			this.inputs = []
 			this.lines = []
+			this.inputLines = []
 			this.location = new ModuleLocation(this.name);
+			this.dragging = false;
 			let parent = document.getElementById("content");
 			let div = document.createElement("div");
 			div.id = this.name;
 			div.className = this.type;
+
+			div.addEventListener('mousedown', (e) => {
+				console.log(e);
+				e.preventDefault();
+				this.dragging = true;
+				this.location.dx = e.layerX;
+				this.location.dy = e.layerY;
+			}, true);
+
+			document.addEventListener('mouseup', (e) => {
+				if (this.dragging) {
+					this.location.x = event.pageX - this.location.dx;
+					this.location.y = event.pageY - this.location.dy;
+					div.style.left = (this.location.x) + 'px';
+					div.style.top = (this.location.y) + 'px';
+					localStorage[this.name] = `{"x":${this.location.x},"y":${this.location.y}}`
+					this.drawLines();
+				}
+				this.dragging = false;
+			}, true);
+
+			document.addEventListener('mousemove', (e) => {
+				//	console.log(e);
+				e.preventDefault();
+				if (this.dragging) {
+					this.location.x = event.pageX - this.location.dx;
+					this.location.y = event.pageY - this.location.dy;
+					div.style.left = (this.location.x) + 'px';
+					div.style.top = (this.location.y) + 'px';
+				}
+			}, true);
 			div.innerHTML = matches[1];
 			parent.appendChild(div);
 		}
 
 		Module.prototype.initLines = function () {
 			this.outputs.forEach(o => {
-				this.lines.push(new LeaderLine(
+				const m = getModule(window._modules, o);
+				const l = new LeaderLine(
 					document.getElementById(this.name),
-					document.getElementById(o)
-				));
+					document.getElementById(o),
+					{
+						dash: { animation: false },
+						startPlugColor: '#a6f41d', gradient: true
+					}
+				);
+				m.inputs.push(this.name);
+				m.inputLines.push(l);
+				this.lines.push(l);
 			})
 		}
 
 		Module.prototype.drawLines = function () {
 			this.lines.forEach(l => {
+				l.position();
+			})
+			this.inputLines.forEach(l => {
 				l.position();
 			})
 		};
@@ -88,7 +144,7 @@
 		}
 
 		const getModule = (modules, name) => {
-			let filtered = modules.filter(m => { m.name === name })
+			let filtered = modules.filter(m => m.name === name)
 			if (filtered && filtered.length) {
 				return filtered[0];
 			}
@@ -98,23 +154,55 @@
 		const ready = () => {
 			const stage = "data";
 			const input = document.getElementById(stage).innerText
-			let modules = input.split("\n").map((l) => new Module(l));
-			modules.push(new Module("rx -> "));
-			modules.forEach((m) => {
+			window._modules = input.split("\n").map((l) => new Module(l));
+			window._modules.push(new Module("rx -> "));
+			window._modules.forEach((m) => {
 				m.initLines();
 			});
-			modules.forEach((m) => {
+
+			let row = 0;
+			let col = 0;
+			let dist = 300;
+			let todo = ["rx"]
+
+			while (true) {
+				let next = []
+				for (const mname of todo) {
+					let m = getModule(window._modules, mname);
+					if (!m.location.adjusted) {
+						m.location.adjusted = true;
+						if (m.location.x === 0 && m.location.y === 0) {
+							m.location.x = col * dist + 100;
+							m.location.y = row * dist + 100;
+						}
+						col += 1;
+						next.push(m.inputs);
+					}
+				}
+				row += 1;
+				col = 0;
+				todo = next.flat();
+				if (todo.length === 0) {
+					break;
+				}
+
+			}
+			window._modules.forEach((m) => {
 				m.draw();
 			});
-			modules.forEach((m) => {
+			window._modules.forEach((m) => {
 				m.drawLines();
 			});
 		}
 		window.onload = ready;
+		function clearStorage() {
+			localStorage.clear();
+		}
 	</script>
 </head>
 
 <body>
+	<button onclick="clearStorage()">clear</button>
 	<div id="content">
 	</div>
 
